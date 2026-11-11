@@ -1,4 +1,4 @@
-import {useState,useEffect,useMemo} from 'react';import {Platform} from 'react-native';import AsyncStorage from '@react-native-async-storage/async-storage';
+import {useState,useEffect,useMemo,useRef} from 'react';import {Platform} from 'react-native';import AsyncStorage from '@react-native-async-storage/async-storage';
 import {validateSpec,parseItems,formatItems,EXAMPLE_ITEMS,type Project,type AppKind} from '../core/spec';import {createRepository} from '../core/storage';import {newProject,reviseProject,restoreRevision} from '../core/revisions';import {generateProject,type SourceBundle} from '../core/generator';import {exportBundle} from './export';import {createMutationGate} from '../core/mutations';import {planningInput,prepareProposal} from '../core/planning';
 export type Page='home'|'new'|'detail'|'engines'|'access'|'method';
 export const families=[['catalog','Catalogo offline','Contenuti, ricerca e preferiti'],['tracker','Gestionale','Login e dati personali · in sviluppo'],['community','Gruppi ed eventi','Ruoli e inviti · in sviluppo']] as const;
@@ -7,9 +7,12 @@ export function useWorkspace(){
  const [page,setPage]=useState<Page>('home'),[projects,setProjects]=useState<Project[]>([]),[current,setCurrent]=useState<string|null>(null),[ready,setReady]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[recovered,setRecovered]=useState(false);
  const [name,setName]=useState(''),[idea,setIdea]=useState(''),[kind,setKind]=useState<AppKind>('catalog'),[items,setItems]=useState(''),[quiz,setQuiz]=useState(false),[note,setNote]=useState(''),[editing,setEditing]=useState(false),[bundle,setBundle]=useState<SourceBundle|null>(null);
  const [providers,setProviders]=useState<{id:string;model:string;configured:boolean}[]>([]),[selected,setSelected]=useState('auto'),[consent,setConsent]=useState(false),[engineNote,setEngineNote]=useState('Nessun motore AI collegato');
+ const session = useRef('');
+ const view = useRef(0);
+ const [jobStatus,setJobStatus] = useState('');
  const gate=useMemo(()=>createMutationGate(),[]);const [proposal,setProposal]=useState<(ReturnType<typeof prepareProposal> & {routing?: {provider: string; model: string; reason: string}})|null>(null);const repo=useMemo(()=>createRepository(AsyncStorage),[]),project=projects.find(p=>p.id===current);
  useEffect(()=>{repo.load().then(r=>{setProjects(r.projects);setRecovered(r.recovered);setReady(true);}).catch(e=>setError(e.message));},[repo]);
- function go(next:Page){setPage(next);setError('');setBundle(null);setProposal(null);}
+ function go(next:Page){view.current++;setPage(next);setError('');setBundle(null);setProposal(null);}
  function start(){setName('');setIdea('');setKind('catalog');setItems('');setQuiz(false);setNote('');setEditing(false);go('new');}
  async function save(){try{await gate.run(async()=>{setBusy(true);setError('');try{const spec=validateSpec({name,idea,kind,quiz,items:parseItems(items)});const p=editing&&project?reviseProject(project,note,spec):newProject(`p${Date.now().toString(36)}${Math.random().toString(36).slice(2,7)}`,spec);const next=editing?projects.map(v=>v.id===p.id?p:v):[p,...projects];await repo.save(next);setProjects(next);setCurrent(p.id);setEditing(false);go('detail');}finally{setBusy(false);}});}catch(e){setError(message(e));}}
 
@@ -20,9 +23,45 @@ export function useWorkspace(){
  function generate(){if(project)try{setBundle(generateProject(project.spec));}catch(e){setError(message(e));}}
  async function download(){if(bundle)try{await exportBundle(bundle);}catch(e){setError(message(e));}}
  async function refreshEngines(){try{if(Platform.OS!=='web')throw Error('Il gateway di sviluppo si collega dal pannello web sul computer. Il collegamento remoto sicuro è una fase successiva.');const r=await fetch(API+'/providers',{signal:AbortSignal.timeout(4000)});if(!r.ok)throw Error('Gateway locale non disponibile.');const d=await r.json();setProviders(d.providers.filter((p:any)=>p.configured));setEngineNote(d.providers.some((p:any)=>p.configured)?'Gateway disponibile · modalità gratuita':'Nessun motore AI collegato');}catch(e){setProviders([]);setEngineNote('Nessun motore AI collegato');setError(message(e));}}
- async function planAI(){setBusy(true);setError('');try{if(Platform.OS!=='web')throw Error('Per il gateway di sviluppo usa il pannello web locale.');if(!providers.some(p=>selected==='auto'||p.id===selected))throw Error('Collega un motore gratuito dalla sezione Motori AI. Puoi già creare una bozza compilando i campi.');const currentDraft={name,idea,kind,quiz,items:parseItems(items)};const instruction=planningInput(currentDraft,editing?note:idea);const r=await fetch(API+'/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idea:instruction,provider:selected,cloudConsent:consent,kind,phase:editing?'revision':'draft'}),signal:AbortSignal.timeout(55000)});const d=await r.json();if(!r.ok)throw Error(d.error??'Generazione non riuscita.');setProposal({...prepareProposal(currentDraft,d.spec),routing:d.routing});}catch(e){setError(message(e));}finally{setBusy(false);}}
+ async function planAI(){
+  const activeView = view.current;
+  try {
+   await gate.run(async () => {
+    setBusy(true);setError('');
+    try {
+     if(Platform.OS!=='web')throw Error('Per il gateway di sviluppo usa il pannello web locale.');
+     if(!providers.some(p=>selected==='auto'||p.id===selected))throw Error('Collega un motore gratuito dalla sezione Motori AI.');
+     const currentDraft={name,idea,kind,quiz,items:parseItems(items)};
+     const instruction=planningInput(currentDraft,editing?note:idea);
+     session.current ||= crypto.randomUUID();
+     const r=await fetch(API+'/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      session:session.current,idea:instruction,provider:selected,cloudConsent:consent,kind,phase:editing?'revision':'draft',
+     }),signal:AbortSignal.timeout(8000)});
+     const receipt=await r.json();
+     if(!r.ok)throw Error(receipt.error??'Invio alla coda non riuscito.');
+     while (view.current === activeView) {
+      const statusResponse=await fetch(API+'/jobs/'+receipt.id,{signal:AbortSignal.timeout(8000)});
+      const job=await statusResponse.json();
+      if(view.current !== activeView)return;
+      if(!statusResponse.ok||job.status==='failed')throw Error(job.error??'Elaborazione non riuscita.');
+      if(job.status==='done'){
+       const {spec,routing}=job.result;
+       setProposal({...prepareProposal(currentDraft,spec),routing});
+       return;
+      }
+      setJobStatus(job.status==='queued'?'In coda…':'Elaborazione…');
+      await new Promise(resolve=>setTimeout(resolve,1000));
+     }
+    } finally {
+     setBusy(false);setJobStatus('');
+    }
+   });
+  } catch(e) {
+   if(view.current===activeView)setError(message(e));
+  }
+ }
  function applyProposal(){if(!proposal)return;const spec=proposal.spec;setName(spec.name);setIdea(spec.idea);setKind(spec.kind);setItems(formatItems(spec.items));setQuiz(spec.quiz);setProposal(null);}
- return {proposal,applyProposal,rejectProposal:()=>setProposal(null),page,projects,project,ready,error,busy,recovered,name,setName,idea,setIdea,kind,setKind,items,setItems,quiz,setQuiz,note,setNote,editing,bundle,providers,selected,setSelected,consent,setConsent,engineNote,go,start,save,edit,restore,open,generate,download,refreshEngines,planAI,example:()=>setItems(EXAMPLE_ITEMS)};
+ return {jobStatus,proposal,applyProposal,rejectProposal:()=>setProposal(null),page,projects,project,ready,error,busy,recovered,name,setName,idea,setIdea,kind,setKind,items,setItems,quiz,setQuiz,note,setNote,editing,bundle,providers,selected,setSelected,consent,setConsent,engineNote,go,start,save,edit,restore,open,generate,download,refreshEngines,planAI,example:()=>setItems(EXAMPLE_ITEMS)};
 }
 function message(e:unknown){return e instanceof Error?e.message:'Operazione non riuscita. Nessuna modifica confermata.';}
 export type Workspace=ReturnType<typeof useWorkspace>;

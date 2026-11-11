@@ -7,7 +7,7 @@ Creatore di app di Gian Paolo Franceschini. Client Expo/React Native per iOS, An
 - Generatore **senza AI** di sorgenti Expo per cataloghi offline: dataset personalizzato, ricerca/categorie, preferiti, quiz opzionale sui colori e ripasso degli errori.
 - ZIP esportabile dal web; percorso nativo di condivisione file implementato ma non provato su telefono.
 - Recupero da backup e blocco dei dati corrotti, nessun messaggio di successo per scritture fallite.
-- Gateway gratuito sostituibile: Ollama locale, Groq Free e OpenRouter :free. Quote/cache persistenti, consenso cloud, controlli prezzo e timeout. Adapter provati con risposte di test; **nessuna inferenza reale ancora eseguita**.
+- Gateway gratuito sostituibile: Ollama e llama.cpp in locale, Groq Free, OpenRouter :free e Cloudflare Workers AI Free. Quote/cache persistenti, consenso cloud, controlli prezzo e timeout. Adapter provati con risposte di test; **nessuna inferenza reale ancora eseguita**.
 - Proposte AI separate dai campi attuali e dai salvataggi; dataset esistente protetto per default. Nessun modello esegue comandi.
 - Policy delle deleghe con permessi, scadenza, revoca, stato MFA e blocco totale dei pagamenti. OAuth, vault ed esecutore browser **non ancora integrati**.
 
@@ -32,21 +32,36 @@ La [guida grafica](docs/design/README.md) raccoglie le tavole e la scelta **B ·
 
 ## Selezione automatica dei motori AI
 
-In **Motori AI**, seleziona **Scelta automatica**. Configura i tre adattatori
-nel gateway tramite le variabili in `.env.example`. Per Ollama avvia il
-servizio locale e installa un modello compatibile sul computer. Per Groq e
-OpenRouter usa chiavi dedicate e i rispettivi piani gratuiti.
+Copia `.env.example` in `.env`, compila soltanto i motori che vuoi usare e
+avvia il gateway con `node --env-file=.env --experimental-strip-types server/main.ts`.
+Avvia poi `npm run web` e in **Motori AI** aggiorna i collegamenti.
 
-Il gateway considera famiglia dell'app, fase e quota locale residua. I profili
-iniziali privilegiano Groq per la prima bozza di un catalogo e OpenRouter per
-gestionali, gruppi e revisioni di cataloghi. Ollama rimane utilizzabile senza
-invio al cloud. Sono preferenze iniziali, da calibrare con prove sui modelli
-effettivamente collegati. I campi `OLLAMA_FIT`, `GROQ_FIT` e
-`OPENROUTER_FIT` accettano un oggetto JSON con punteggi
-`catalog`, `tracker`, `community`, `draft`, `revision` da 1 a 10
-e un eventuale limite `maxInputBytes` da 1 a 32000.
+| Motore | Configurazione |
+| --- | --- |
+| Ollama | Avvia Ollama su `127.0.0.1:11434`, scarica un modello locale e imposta `OLLAMA_MODEL`. |
+| llama.cpp | Avvia `llama-server -m /percorso/modello.gguf --alias forgia-local --host 127.0.0.1 --port 8080` e imposta `LLAMACPP_MODEL=forgia-local`. |
+| Groq | Imposta modello e chiave di un account Free. Abilita `GROQ_FREE_PLAN_CONFIRMED=true` solo dopo aver verificato il piano senza fatturazione. |
+| OpenRouter | Imposta chiave e ID di un modello con suffisso `:free`. Il gateway controlla i prezzi dichiarati prima dell'inferenza. |
+| Cloudflare | Imposta ID account, token Workers AI e `CLOUDFLARE_MODEL=@cf/meta/llama-3.1-8b-instruct`. Abilita `CLOUDFLARE_FREE_PLAN_CONFIRMED=true` solo su Workers Free. Mantieni l'account sul piano Free. |
 
-Con consenso cloud, un errore del fornitore o una quota esaurita può far
-passare al successivo candidato gratuito. La proposta mostra quale modello
-ha risposto. Per gestionali e gruppi si preparano i requisiti. La generazione
-di sorgenti resta disponibile per i cataloghi.
+I piani dei provider sono verificati dall'operatore per Groq e Cloudflare.
+Le chiavi restano nel gateway e `.env` è escluso da Git.
+
+In **Scelta automatica**, le prime bozze semplici privilegiano i modelli
+locali. Famiglia, fase, dimensione, quota residua e lavori in attesa
+determinano i candidati. Forgia permette 20 richieste al giorno per ciascun
+motore cloud. Protegge le ultime 4 richieste per le operazioni più
+complesse, oppure le ultime 8 quando ci sono almeno due lavori in attesa.
+I motori locali dipendono da memoria, velocità e modello installato.
+I profili iniziali si possono calibrare via `*_FIT` con punteggi da 1 a 10
+per `catalog`, `tracker`, `community`, `draft`, `revision` e un
+eventuale `maxInputBytes` da 1 a 32000.
+
+La coda locale usa un solo worker e alterna le sessioni del pannello quando
+possibile. Accetta fino a 16 lavori attivi, fino a 3 per sessione. Al
+riavvio riprende i lavori in attesa e segnala quello interrotto. Conserva
+fino a 32 esiti locali. Il pannello mostra lo stato durante la sessione
+corrente. L'eventuale passaggio al cloud richiede il consenso. Se nessun
+motore compatibile risponde, il lavoro restituisce un errore e può essere
+riprovato. I modelli propongono specifiche da approvare. L'export di
+sorgenti Expo è disponibile per i cataloghi.

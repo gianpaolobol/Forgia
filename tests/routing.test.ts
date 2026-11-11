@@ -86,3 +86,33 @@ test('quota automatica rispettata anche dopo riavvio', async () => {
   await assert.rejects(createGateway(store,{dailyLimit:1}).planAuto('Idea 3',providers,true,context), /nessun motore/i);
   assert.deepEqual(calls,['groq','local']);
 });
+
+test('le bozze semplici usano il locale e il carico aumenta la riserva cloud', () => {
+  const local = fixture('local', []);
+  const groq = fixture('groq', []);
+  const draft = routingContext('catalog', 'draft');
+  const quota = {local: Infinity, groq: 7};
+  assert.equal(rankProviders([groq, local], draft, 'Idea', true, quota, 0)[0].provider.id, 'local');
+  assert.equal(rankProviders([groq], draft, 'Idea', true, quota, 0).length, 1);
+  assert.equal(rankProviders([groq], draft, 'Idea', true, quota, 2).length, 0);
+  assert.equal(rankProviders([groq], routingContext('catalog', 'revision'), 'Idea', true, quota, 2).length, 1);
+});
+
+test('llama.cpp e Cloudflare rispettano endpoint e modalità gratuita', async () => {
+  const signal = new AbortController().signal;
+  const llama = createProvider({id:'llamacpp', model:'forgia-local'}, async (url, init) => {
+    assert.equal(url, 'http://127.0.0.1:8080/v1/chat/completions');
+    assert.equal(new Headers(init?.headers).has('Authorization'), false);
+    return Response.json({choices:[{message:{content:'{}'}}]});
+  });
+  assert.equal(llama.mode, 'local');
+  assert.equal(await llama.complete('Idea', signal), '{}');
+  const config = {id:'cloudflare',model:'@cf/meta/llama-3.1-8b-instruct',accountId:'a'.repeat(32),apiKey:'test'};
+  assert.throws(() => createProvider(config), /Workers Free/);
+  const cf = createProvider({...config,freePlanConfirmed:true}, async (url, init) => {
+    assert.equal(url, 'https://api.cloudflare.com/client/v4/accounts/' + config.accountId + '/ai/run/' + config.model);
+    assert.equal(JSON.parse(init?.body as string).max_tokens, 2000);
+    return Response.json({success:true,result:{response:'{}'}});
+  });
+  assert.equal(await cf.complete('Idea', signal), '{}');
+});
