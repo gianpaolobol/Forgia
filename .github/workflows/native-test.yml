@@ -57,6 +57,37 @@ jobs:
           path: artifacts/
           if-no-files-found: error
 
+      - name: Compila Android App Bundle senza firma
+        working-directory: android
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          gradle = Path('app/build.gradle')
+          text = gradle.read_text()
+          start = text.index('        release {', text.index('    buildTypes {'))
+          line = '            signingConfig signingConfigs.debug\n'
+          signature = text.index(line, start)
+          gradle.write_text(text[:signature] + text[signature + len(line):])
+          PYTHON
+          ./gradlew --no-daemon :app:bundleRelease
+          mkdir -p ../store-android
+          cp app/build/outputs/bundle/release/app-release.aab ../store-android/Forgia-android-unsigned.aab
+          cd ../store-android
+          python3 - <<'PYTHON'
+          from zipfile import ZipFile
+          with ZipFile('Forgia-android-unsigned.aab') as bundle:
+              names = bundle.namelist()
+              assert 'BundleConfig.pb' in names
+              assert 'base/manifest/AndroidManifest.xml' in names
+              assert not any(n.startswith('META-INF/') and n.endswith(('.RSA', '.DSA', '.EC', '.SF')) for n in names)
+          PYTHON
+          sha256sum Forgia-android-unsigned.aab > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Forgia-android-unsigned-aab
+          path: store-android/
+          if-no-files-found: error
+
   ios-simulator:
     runs-on: macos-26
     timeout-minutes: 35
@@ -85,4 +116,22 @@ jobs:
         with:
           name: Forgia-ios-simulator
           path: artifacts/
+          if-no-files-found: error
+      - name: Compila archivio iOS per iPhone senza firma
+        run: |
+          xcodebuild -workspace ios/Forgia.xcworkspace -scheme Forgia -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Forgia.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO archive
+          app="$RUNNER_TEMP/Forgia.xcarchive/Products/Applications/Forgia.app"
+          test -f "$app/Forgia"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = it.gianpaolofranceschini.forgia
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$app/Info.plist")" = iPhoneOS
+          mkdir -p store-ios
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/Forgia.xcarchive" store-ios/Forgia-ios-unsigned-xcarchive.zip
+          cd store-ios
+          shasum -a 256 Forgia-ios-unsigned-xcarchive.zip > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Forgia-ios-unsigned-xcarchive
+          path: store-ios/
           if-no-files-found: error

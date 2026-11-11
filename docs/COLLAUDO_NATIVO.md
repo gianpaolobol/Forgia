@@ -29,3 +29,17 @@ Il primo collaudo nativo copre bozza, revisioni e condivisione offline.
 Il collaudo dell’AI si esegue dal pannello web con la demo locale descritta
 nel README. Sul telefono la connessione AI richiede ancora un gateway
 autenticato.
+
+## Pacchetti per gli store
+
+Il workflow GitHub Actions genera anche `Forgia-ios-unsigned-xcarchive` per
+iPhone fisico e `Forgia-android-unsigned-aab`. La firma viene applicata con
+le credenziali dedicate di Forgia. Gli artefatti senza firma sono intermedi.
+
+- **TestFlight.** Registrare il Bundle ID `it.gianpaolofranceschini.forgia`,
+  creare la scheda Forgia in App Store Connect e usare un certificato Apple
+  Distribution e un profilo App Store Connect per esportare un IPA firmato.
+  Caricare l’IPA e assegnare la build elaborata al gruppo di test interno.
+- **Play Console.** Firmare l’AAB con la chiave di caricamento di Forgia
+  tramite `jarsigner` e verificare la firma prima di caricarlo in Test interni.
+  Conservare la chiave per le build successive.
