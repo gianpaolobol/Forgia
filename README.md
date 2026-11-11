@@ -7,9 +7,22 @@ Creatore di app di Gian Paolo Franceschini. Client Expo/React Native per iOS, An
 - Generatore **senza AI** di sorgenti Expo per cataloghi offline: dataset personalizzato, ricerca/categorie, preferiti, quiz opzionale sui colori e ripasso degli errori.
 - ZIP esportabile dal web; percorso nativo di condivisione file implementato ma non provato su telefono.
 - Recupero da backup e blocco dei dati corrotti, nessun messaggio di successo per scritture fallite.
-- Gateway gratuito sostituibile: Ollama e llama.cpp in locale, Groq Free, OpenRouter :free e Cloudflare Workers AI Free. Quote/cache persistenti, consenso cloud, controlli prezzo e timeout. Adapter provati con risposte di test; **nessuna inferenza reale ancora eseguita**.
+- Gateway gratuito sostituibile: Ollama e llama.cpp in locale, Groq Free, OpenRouter :free e Cloudflare Workers AI Free. Quote/cache persistenti, consenso cloud, controlli prezzo e timeout. Inferenza reale verificata con llama.cpp e Qwen2.5-0.5B-Instruct.
 - Proposte AI separate dai campi attuali e dai salvataggi; dataset esistente protetto per default. Nessun modello esegue comandi.
 - Policy delle deleghe con permessi, scadenza, revoca, stato MFA e blocco totale dei pagamenti. OAuth, vault ed esecutore browser **non ancora integrati**.
+
+## Demo con AI locale
+
+Su Linux x86-64, con Node 24, npm, Python 3, curl e shasum disponibili, esegui
+`bash scripts/demo-locale.sh`. Il primo avvio scarica llama.cpp e il modello Qwen
+(469 MiB), verifica i checksum e avvia pannello, gateway e runtime su loopback.
+Su macOS o altre architetture usa un `llama-server` già installato nel PATH
+oppure indica il binario con `FORGIA_LLAMA_SERVER`.
+
+Apri `http://127.0.0.1:8081` sullo stesso computer. In **Motori AI** aggiorna i
+collegamenti. Crea un progetto, descrivi un catalogo con due o tre schede,
+premi **Prepara i campi con AI gratuita**, controlla e applica la proposta.
+Salva la bozza ed esporta i sorgenti ZIP. Questa demo usa solo il modello locale.
 
 ## Avvio locale
 Node 24 e npm. `npm ci`, poi `npm start` per il client oppure `npm run web`. `npm test` esegue le prove del dominio e del gateway; `npm run check` il controllo TypeScript; `npm run export:web` produce il pannello web statico.
@@ -22,7 +35,7 @@ Il gateway ascolta solo `127.0.0.1:8787` e accetta il client web locale sulle or
 Leggere `docs/VERIFICHE_2026-11-11.md`. Bundle JS/Hermes per iOS e Android non sono IPA/AAB firmati. Non attestano installazione fisica, TestFlight, Play Store o comportamento nativo. I test browser automatici sono predisposti ma il lancio locale è bloccato dal sandbox; è stato eseguito un collaudo manuale attraverso il browser disponibile.
 
 ## Prossime consegne
-Piano e roadmap: `docs/specs/2026-11-11-free-first.md`. Scelta API e architettura dell'autonomia: `docs/API_Gratuite_Autonomia_2026-11-11.md`. Il passo successivo è attivare e misurare un modello veramente gratuito, poi completare il verticale C1 con build firmate e installazioni. Nessuna promessa di generazione universale o superiorità prestazionale è ancora dimostrata.
+Piano e roadmap: `docs/specs/2026-11-11-free-first.md`. Scelta API e architettura dell'autonomia: `docs/API_Gratuite_Autonomia_2026-11-11.md`. Il passo successivo è ampliare le prove sui modelli, attivare gli account cloud Free e completare il verticale C1 con build firmate e installazioni. Nessuna promessa di generazione universale o superiorità prestazionale è ancora dimostrata.
 
 Non sono stati copiati sorgenti NativeBot/Vibra. Le dipendenze hanno le rispettive licenze. Il repository è pubblico. La scelta di una licenza di riuso resta al titolare.
 
