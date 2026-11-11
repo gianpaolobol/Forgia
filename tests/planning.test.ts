@@ -1,0 +1,7 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+const planning=await import('../src/core/planning.ts').catch(()=>({} as any));
+const mutations=await import('../src/core/mutations.ts').catch(()=>({} as any));
+const draft={name:'Nome modificato nel form',idea:'Catalogo personale',kind:'catalog',quiz:false,items:[{name:'A',category:'B',color:''},{name:'C',category:'D',color:''}]};
+test('il contesto AI contiene i campi attuali e l’istruzione, non una versione salvata obsoleta',()=>{assert.equal(typeof planning.planningInput,'function');const p=JSON.parse(planning.planningInput(draft,'Rinomina'));assert.equal(p.current.name,draft.name);assert.equal(p.current.items.length,2);assert.equal(p.instruction,'Rinomina');});
+test('una proposta AI non elimina le schede senza permesso esplicito',()=>{assert.equal(typeof planning.prepareProposal,'function');const p=planning.prepareProposal(draft,{...draft,name:'Nuovo nome',items:[draft.items[0]]},false);assert.equal(p.spec.items.length,2);assert.equal(p.spec.name,'Nuovo nome');assert.ok(p.changes.length);assert.equal(draft.name,'Nome modificato nel form');});
+test('due mutazioni concorrenti non sovrascrivono la cronologia',async()=>{assert.equal(typeof mutations.createMutationGate,'function');const g=mutations.createMutationGate();let release!:()=>void;const wait=new Promise<void>(r=>release=r);const first=g.run(()=>wait);await assert.rejects(g.run(async()=>{}),/operazione/i);release();await first;await g.run(async()=>{});});

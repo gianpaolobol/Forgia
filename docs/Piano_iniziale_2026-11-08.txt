@@ -1,0 +1,135 @@
+PIATTAFORMA PER CREARE APP — ANALISI E PIANO PROPOSTO
+Gian Paolo Franceschini • 8 novembre 2026 • Proposta, nessuna implementazione avviata
+
+1. DECISIONE RACCOMANDATA
+
+Il progetto è fattibile se la prima versione genera alcune famiglie di app iOS e Android e le accompagna fino a una beta installabile e collaudata. Non abbiamo ancora dimostrato un generatore universale affidabile. L'esperienza dei cinque progetti è una buona base metodologica, ma va trasformata in procedure ripetibili, prove registrate e recupero degli errori.
+
+Propongo: prodotto principale «dall'idea alla beta», servizio aggiuntivo di assistenza alla pubblicazione. Il cliente deve conoscere prima di iniziare funzioni supportate, verifiche incluse, costi esterni, dipendenze dai propri account e durata della manutenzione. La sola anteprima resta un risultato intermedio.
+
+Possibile promessa commerciale: «Trasformiamo la tua idea in un'app iOS e Android con sorgenti esportabili, verifiche documentate e distribuzione beta. Se lo desideri, ti accompagniamo nella presentazione agli store, la cui approvazione dipende da Apple e Google».
+
+2. COSA ABBIAMO OSSERVATO NEI CONCORRENTI
+
+Le osservazioni commerciali sono del nostro benchmark del 8/11/2026. Prezzi e quote osservati non sono un listino garantito. Non abbiamo installato le app generate su dispositivi fisici. I quiz erano un caso sintetico per misurare correttezza e salvataggi, non un'attività di generazione di contenuti per Fungo Italia.
+
+FlutterFlow, nuovo builder: anteprima interattiva, sei schermate; catalogo iniziale con dodici oggetti invece dei sei richiesti. Una revisione ha corretto il catalogo nell'anteprima, senza trasferire la modifica all'app principale. Il quiz inviato senza risposte ha prodotto scelte e punteggio mai inseriti: difetto osservato nell'anteprima. Le prove positive 6/6 e 5/6 non lo avevano rivelato. Le regole documentate del nuovo builder sul mancato export dei sorgenti non vanno estese a FlutterFlow Studio, che è un prodotto distinto. Lezione: versione provata e versione consegnata devono coincidere; includere casi negativi e proprietà del codice tra i criteri iniziali.
+
+Rork: account gratuito e quattro design generati; l'avvio della build ha richiesto un piano a pagamento. Non abbiamo collaudato logica o persistenza. Lezione: mostrare il costo necessario per arrivare a una beta prima che l'utente investa nel percorso. La documentazione attuale descrive progetti nativi separati iOS e Android; non assumere il vecchio flusso Expo per i nuovi progetti.
+
+Bolt/StackBlitz: C1 funzionante come PWA in anteprima, con catalogo corretto, ricerca, quiz e salvataggi dopo ricaricamento. Non corrispondeva alla richiesta di beta nativa. La conversione Expo si è fermata parziale per quota. C2 ha predisposto un'app web con database/autenticazione dichiarati, ma non abbiamo verificato accessi reali e isolamento; C3 si è fermato al progetto iniziale. Lezione: bloccare il cambio implicito di piattaforma e salvare sempre una versione integra prima di consumare altre risorse.
+
+Replit: selezionando esplicitamente Mobile ha prodotto un progetto Expo; C1 è stato collaudato nell'anteprima web. Accesso privato e limiti del piano hanno impedito ulteriori prove nei percorsi disponibili; C2 e C3 incompleti per quota. Lezione: validare presto l'intero percorso verso il telefono; non scoprire solo alla fine limiti di accesso, build o budget.
+
+Vibecode: nessuna registrazione completata; i termini pubblici consultati limitavano l'idoneità ai residenti negli Stati Uniti. Non attribuiamo esiti funzionali a un servizio non provato.
+
+NativeBot e Vibra Code: analisi di sorgenti fissati a commit, con prove locali. NativeBot: 11 prove iniziali e 6 di recupero; Vibra: 6 prove di contratto con servizi simulati. Le prove aggiuntive mostrano problemi rispetto ai nostri requisiti di recupero e di distinzione fra operazione richiesta e confermata. Non dimostrano prestazioni di generazione, integrazione cloud reale o qualità di app native. Dettagli, hash e script sono negli allegati.
+
+Non c'è un vincitore assoluto dimostrato: diversi criteri non sono stati eseguiti e le quote gratuite hanno inciso sul risultato. Replit è il riferimento più vicino al percorso Expo osservato; Bolt offre un riferimento utile per rapidità web; Rork per il percorso di design nativo; FlutterFlow per l'esperienza guidata. Nessuno dei percorsi provati ha dimostrato la nostra intera consegna beta.
+
+3. TRE STRADE POSSIBILI
+
+A. Rivendere o orchestrare un solo builder commerciale. Avvio più rapido, ma dipendenza da prezzi, quote, export e cambi di prodotto; margine ridotto e scarso controllo sul recupero. Da usare per esperimenti, non come fondamento esclusivo.
+
+B. Costruire un orchestratore nostro sopra strumenti di sviluppo e servizi sostituibili. Più lavoro iniziale; controllo su sorgenti, stato, verifiche, costi e consegna. È la proposta raccomandata, iniziando con poche famiglie di app e assistenza operativa.
+
+C. Generatore universale autonomo per mobile e desktop fin dal lancio. Massima ambizione; moltiplica ambienti, dipendenze, sicurezza e assistenza prima di avere provato il metodo. Da rinviare.
+
+L'architettura B è una nostra proposta tecnica, non una decisione già approvata sullo stack definitivo. Non si copia integralmente un concorrente: si riusano componenti compatibili solo dopo verifica delle licenze. MIT e AGPL comportano obblighi diversi; prima di incorporare codice Vibra serve una valutazione puntuale dell'uso previsto. Sorgente aperto non significa AI, server e compilazioni gratuiti.
+
+4. PERIMETRO DELLA PRIMA VERSIONE
+
+Utenti: singoli professionisti e piccole organizzazioni che sanno descrivere un bisogno ma non gestire toolchain e store. Le tre famiglie iniziali corrispondono ai casi del benchmark: cataloghi/contenuti offline; gestionali personali con login e dati; gruppi privati con ruoli ed eventi. La terza famiglia entra nel servizio solo quando le prove server sono affidabili.
+
+App del creatore su iPhone e Android: idea e allegati, domande guidate, scheda progetto, anteprima, richieste di modifica, stato attività, costi e collegamenti alla beta. Un pannello web facilita sorgenti, configurazioni e interventi lunghi. Il telefono controlla lavori eseguiti in ambienti cloud isolati: non deve compilare localmente tutto il software.
+
+Proposta iniziale per le app generate: TypeScript, React Native/Expo e moduli selezionati; un percorso di build riproducibile tramite CI, con adattatore per EAS o strumenti nativi. Le versioni si fissano dopo una prova di compatibilità attuale; nessun numero SDK viene assunto dai progetti storici. Servizi auth/database devono essere accessibili tramite interfacce sostituibili.
+
+Da rinviare: pagamenti complessi, social pubblici con moderazione, chat in tempo reale, dati sanitari, funzioni bancarie, esecuzione arbitraria di codice sul telefono, editor 3D e integrazioni hardware specialistiche. Queste richieste possono diventare progetti assistiti con preventivo e verifica dedicati.
+
+Windows/macOS/Linux: prima accesso via pannello web, poi una linea separata per software desktop con prove e pacchetti specifici. Non promettiamo che ogni modulo mobile si trasferisca automaticamente. GrapheneOS è un obiettivo di compatibilità Android da provare su hardware reale, con e senza servizi Google secondo le funzioni. Evitare dipendenze Google obbligatorie quando non servono amplia l'accessibilità; la compatibilità non si deduce dalla sola compilazione Android. Non abbiamo dati di mercato sufficienti per stimare gli utenti dei sistemi alternativi: rinviare il client dedicato è una scelta di priorità, non una conclusione sulla domanda.
+
+5. FLUSSO COMPLETO E SCHERMATE
+
+1) Idea: l'utente descrive destinatari, problema e risultato atteso. Il sistema salva subito un brief, allegati e provenienza dei contenuti.
+2) Domande mirate: piattaforme, dati, login, rete/offline, ruoli, permessi, lingue e distribuzione. Si chiedono soltanto i dati necessari alla fase. Le richieste incompatibili diventano limiti visibili prima della generazione.
+3) Scheda progetto: funzioni comprese, escluse, criteri di accettazione, costo stimato e soglia di spesa. Esempio: sei oggetti esatti, zero utenti estranei autorizzati, nessun successo mostrato se il salvataggio fallisce.
+4) Proposta visiva e dati di esempio: contenuti simulati segnalati; anteprima distinta dall'app compilata. L'utente conferma la direzione prima dei lavori costosi.
+5) Generazione: ambiente temporaneo isolato per progetto, dipendenze controllate, commit e checkpoint. Ogni modifica ha un riepilogo e può essere annullata.
+6) Verifica: controlli statici, logica, percorsi negativi, servizi reali di test e requisiti specifici. Il sistema corregge entro il budget, poi segnala il blocco senza inventare un esito positivo.
+7) Preparazione beta: account del cliente, identificativi, firme, build iOS/Android, caricamento nei canali di test autorizzati.
+8) Collaudo installato: prova dell'esatto artefatto, avvio da installazione pulita, riapertura, rete assente e funzioni concordate; registrazione dispositivo, OS, commit, build e risultato.
+9) Consegna: link funzionanti per tester, sorgenti, istruzioni, problemi noti, durata del supporto, esportazione e piano aggiornamenti. Lo stato «beta consegnata» compare soltanto dopo disponibilità e verifica.
+10) Pubblicazione facoltativa: correzioni dai test, schede store, dichiarazioni pertinenti, materiali, accesso revisori, invio e gestione delle osservazioni concordate. L'approvazione resta uno stato esterno.
+
+Stati del pannello: richiede dati; pronto; in coda; in esecuzione; bloccato; fallito; verificato; inviato; disponibile. Per arresti: richiesto, confermato, non verificabile. Un flag locale non prova che un processo remoto sia terminato. Se la quota finisce, il progetto rimane recuperabile e l'ultima versione valida resta accessibile.
+
+6. COSA SIGNIFICA «BETA PRONTA»
+
+Ogni consegna deve indicare versione e prove, non una percentuale generica. Requisiti minimi proposti: sorgenti esportati e dipendenze bloccate; compilazione ripetibile; nessun crash bloccante nei percorsi concordati; installazione pulita su almeno un iPhone e un Android fisici; riapertura e salvataggi verificati; assenza di risultati fittizi; limiti e difetti residui dichiarati; link di distribuzione utilizzabile. Un solo dispositivo per piattaforma è la soglia del pilota, non prova di compatibilità universale.
+
+Per C1: dataset esatto, risposta mancante gestita, sei corrette/sei errate/un errore, ripasso definito, salvataggio dopo chiusura processo, funzionamento offline. Per C2: due utenti reali di test, recupero credenziali, CRUD e riapertura da secondo dispositivo; richiesta diretta al server con identità errata respinta; rete interrotta senza falso successo. Per C3: non membro respinto dal server, ruoli rispettati, invito revocato inutilizzabile, RSVP senza duplicati e date coerenti col fuso.
+
+I test fisici richiedono dispositivi e disponibilità operativa: oggi il benchmark non li ha certificati. L'automazione può ridurre il lavoro, ma non giustifica dichiarare provata una fase che non è stata eseguita. Al lancio può essere necessario un servizio assistito prima del completo self-service.
+
+7. NUMERI E REGOLE DEGLI STORE
+
+Google Play: test interni fino a 100 tester; nessun requisito di 12 persone per iniziare questo canale. Per gli account personali creati dopo il 13 novembre 2023, l'accesso alla produzione richiede un test chiuso con almeno 12 tester iscritti ininterrottamente per almeno 14 giorni e successiva domanda di accesso. Il completamento dei giorni non equivale ad approvazione automatica. Riferimenti G1/G2.
+
+Apple: TestFlight consente fino a 100 tester interni, che sono utenti App Store Connect con accesso idoneo, e fino a 10.000 esterni. Per questi ultimi il primo build deve passare la revisione beta; non va presentato come accesso immediato garantito. Le build sono testabili per 90 giorni. Non è indicato un minimo di tester analogo a quello Google per la produzione. Riferimenti A1/A2.
+
+Non suggeriamo di aggiungere clienti comuni al team interno Apple per aggirare la revisione. Per un pilota proponiamo 5–10 persone coinvolte per feedback, come scelta nostra; se serve il requisito Google, si pianifica un gruppo sufficiente e si monitorano le adesioni continue. Non vendiamo tester fittizi o sola iscrizione nominale.
+
+La linea guida Apple 4.2.6 richiede che le app create da servizi commerciali di generazione siano presentate direttamente dal fornitore dei contenuti. Il flusso proposto prevede quindi account del cliente e strumenti per personalizzare e presentare la propria app; prima di automatizzare l'invio per terzi va verificato il modello preciso. La 2.5.2 pone limiti a codice scaricato/eseguito e un'eccezione limitata per app educative: non assumiamo che il nostro prodotto vi rientri. Serve una verifica preventiva dell'esperienza iOS del creatore. Preview web e distribuzione separata delle build sono una proposta prudente, non una garanzia di approvazione. Riferimento A3.
+
+8. BETA O PUBBLICAZIONE: PRO E CONTRO
+
+Solo prototipo: rapido ed economico; utile per validare l'idea, ma non realizza la promessa di un'app installabile. Deve essere un'offerta separata, senza etichetta «beta pronta».
+Beta collaudata: risultato concreto e misurabile, feedback prima del lancio, minor variabilità della revisione pubblica. Richiede comunque firme, account, verifica, assistenza e aggiornamenti; su iOS la scadenza TestFlight va gestita. È l'offerta principale consigliata.
+Pubblicazione inclusa obbligatoria: percorso completo, ma costi e tempi dipendono dal caso, dalla qualità dei contenuti e dai revisori; genera aspettative difficili da controllare. Sconsigliata come promessa standard illimitata.
+Beta più supporto store facoltativo: mantiene il valore della consegna e permette un servizio più completo. Definire quali revisioni, materiali, numero di cicli correttivi e periodo di supporto sono inclusi. È il modello raccomandato.
+
+9. ACCOUNT, AUTONOMIA E DATI
+
+Preferire API e OAuth con permessi limitati, audit e revoca; browser come integrazione residuale quando consentita e autorizzata. Le registrazioni automatiche non devono inventare dati anagrafici, dichiarazioni o diritti sui contenuti. Verifiche d'identità, passaggi MFA e accordi personali possono richiedere il titolare. Nessuna promessa di autonomia assoluta.
+
+Non servono carta di credito e coordinate bancarie per descrivere o generare normalmente un'app. I pagamenti dei fornitori vanno gestiti nei loro checkout; i dati fiscali o bancari si chiedono soltanto quando l'effettivo servizio li richiede. Segreti cifrati fuori da chat, repository e log; accesso solo al job necessario, cancellazione e rotazione disponibili. Ambienti separati per clienti e per test/produzione; il codice generato è trattato come codice non fidato.
+
+10. COSTI E MODELLO ECONOMICO DA VALIDARE
+
+Non è dimostrato un costo sostenibile per app: mancano tre consegne native complete misurate. Prima del listino, registrare consumo AI, minuti sandbox/build, storage, traffico e soprattutto tempo umano per correzioni e assistenza.
+
+Costo per beta = AI + ambienti di sviluppo + build + servizi di test + quota infrastruttura + lavoro umano + riserva per tentativi falliti. Il margine va calcolato sui progetti completati, includendo i tentativi non riusciti. Account store, servizi esterni e manutenzione continuativa devono risultare distinti.
+
+Proposta commerciale da provare: breve definizione del progetto; pacchetto beta con ambito, revisioni e budget espliciti; supporto store separato; manutenzione successiva opzionale. Evitare un prezzo «illimitato» e non fissare cifre prima di conoscere il costo reale. Nessun servizio a pagamento è stato acquistato per questo piano.
+
+11. FASI DI REALIZZAZIONE E CONDIZIONI DI PASSAGGIO
+
+Fase 0 — Specifica e confini: formalizzare tre famiglie, flusso iOS del creatore, requisiti store, strategia licenze e modello di costo. Uscita: requisiti leggibili e criteri per rifiutare o rinviare richieste fuori ambito.
+Fase 1 — Motore affidabile: breve progetto salvato, job isolati, versioni, esportazione, recupero dopo errore, budget e stati verificabili. Uscita: interruzioni deliberate non fanno perdere dati o dichiarare completamenti inesistenti.
+Fase 2 — Verticale C1: dall'idea a due build firmate dello stesso commit e prove fisiche/offline. Uscita: tutti i criteri C1 pertinenti superati sull'artefatto consegnato.
+Fase 3 — C2 reale: auth, dati, isolamento, errori rete e secondo dispositivo. Uscita: nessun utente accede ai dati altrui, prove server registrate, niente backend simulato in consegna.
+Fase 4 — C3 reale: ruoli, revoca, concorrenza e sincronizzazione. Uscita: autorizzazioni e duplicati verificati anche tramite API.
+Fase 5 — Pilota assistito: tre progetti di utenti esterni al gruppo di sviluppo, senza pubblicazione pubblica automatica. Misurare tempo, costo, interventi umani, recuperi e soddisfazione. Uscita: ogni progetto consegnato oppure interrotto con stato e motivazione corretti; definire soglie economiche prima del pilota.
+Fase 6 — Apertura graduale: client iOS/Android, supporto e manutenzione organizzati, servizio store; desktop solo dopo risultati stabili. Nessuna data di lancio responsabile è ricavabile dalle sole sessioni gratuite: stimare tempi dopo il verticale C1.
+
+Il prossimo passo tecnico raccomandato è il verticale C1 completo, non un altro giro di screenshot: deve dimostrare continuità fra richiesta, codice, build, installazione e prova. Questo documento conclude la proposta; non attesta che il motore sia stato costruito.
+
+12. CINQUE PROGETTI NOSTRI COME CASI APPLICATIVI
+
+Fungo Italia: caso più ricco per contenuti, offline, quiz, accessi e aggiornamenti; documentare anche difetti e cicli di revisione. Random Stranger: esempio di requisiti social e controlli all'avvio, con problemi di startup segnalati da risolvere prima di presentarlo come successo operativo. Facciamo Balotta: progettazione visiva e recupero asset, da accompagnare con versione e prove reali. ByteBudget: dati esterni, geolocalizzazione e costi API, con verifica delle dipendenze e delle build. Pianta Libera: collaborazione e migrazione di moduli, senza attribuirci il lavoro di Claude o certificare correzioni non verificate.
+
+Per ogni caso creare una scheda con autorizzazione a mostrarlo, contributi, problema iniziale, scelte, repository/commit, piattaforme, artefatti, prove, tempi effettivi e limiti. Le informazioni storiche guidano il metodo ma non certificano lo stato attuale dei repository: questo turno non li ha ri-auditati. Il portfolio può includere progetti in beta, dichiarandolo.
+
+FONTI E ALLEGATI
+
+Fonti pubbliche verificate l'8/11/2026; regole da ricontrollare prima dell'esecuzione.
+G1: https://support.google.com/googleplay/android-developer/answer/14151465?hl=en-GB
+G2: https://support.google.com/googleplay/android-developer/answer/9845334?hl=en
+A1: https://developer.apple.com/testflight/
+A2: https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview/
+A3: https://developer.apple.com/app-store/review/guidelines/ (2.5.2 e 4.2.6)
+GrapheneOS: https://grapheneos.org/usage#sandboxed-google-play
+Documentazione commerciale consultata nelle sessioni: https://docs.flutterflow.io/ffx/for-developers ; https://docs.rork.com/expo ; https://docs.rork.com/introduction/subscriptions ; https://docs.replit.com/features/artifact-types/building-mobile-apps ; https://expo.dev/ai/bolt ; https://www.vibecodeapp.com/terms
+Alternative aperte: https://github.com/easonwang00/nativebot ; https://github.com/sa4hnd/vibra-code . Commit e perimetro effettivo delle prove sono negli allegati.
+Evidenze operative: sessione_*.json, matrice_confronto.csv, Confronto_Operativo_AppBuilder_2026-11-08.pdf, Approfondimento_Open_Source_2026-11-08.txt e script. NON_ESEGUITO non significa fallimento. Le proposte del presente piano sono nostre deduzioni, non funzioni certificate dei concorrenti.

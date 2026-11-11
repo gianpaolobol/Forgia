@@ -1,0 +1,38 @@
+{
+  "name": "Erbario di Gian",
+  "idea": "Un catalogo offline di piante con ricerca e preferiti.",
+  "kind": "catalog",
+  "quiz": false,
+  "items": [
+    {
+      "name": "Alba",
+      "category": "A",
+      "color": "blu"
+    },
+    {
+      "name": "Brina",
+      "category": "A",
+      "color": "verde"
+    },
+    {
+      "name": "Corda",
+      "category": "B",
+      "color": "rosso"
+    },
+    {
+      "name": "Duna",
+      "category": "B",
+      "color": "giallo"
+    },
+    {
+      "name": "Edera",
+      "category": "C",
+      "color": "viola"
+    },
+    {
+      "name": "Filo",
+      "category": "C",
+      "color": "bianco"
+    }
+  ]
+}

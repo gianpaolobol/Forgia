@@ -1,0 +1,13 @@
+node_modules/
+.expo/
+dist/
+artifacts/
+.data/
+.env
+.env.*
+!.env.example
+test-results/
+playwright-report/
+
+.sites-checkout/
+.openai/

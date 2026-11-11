@@ -1,0 +1,1 @@
+export function createMutationGate(){let active=false;return {async run<T>(operation:()=>Promise<T>):Promise<T>{if(active)throw Error('Un’operazione è già in corso.');active=true;try{return await operation();}finally{active=false;}}};}

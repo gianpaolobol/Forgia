@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "Erbario di Gian",
+    "slug": "erbario-di-gian",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {},
+    "web": {
+      "output": "single"
+    }
+  }
+}
