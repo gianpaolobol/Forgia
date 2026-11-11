@@ -29,3 +29,24 @@ Non sono stati copiati sorgenti NativeBot/Vibra. Le dipendenze hanno le rispetti
 ## Identità visiva
 
 La [guida grafica](docs/design/README.md) raccoglie le tavole e la scelta **B · Brace** per pulsanti e icone.
+
+## Selezione automatica dei motori AI
+
+In **Motori AI**, seleziona **Scelta automatica**. Configura i tre adattatori
+nel gateway tramite le variabili in `.env.example`. Per Ollama avvia il
+servizio locale e installa un modello compatibile sul computer. Per Groq e
+OpenRouter usa chiavi dedicate e i rispettivi piani gratuiti.
+
+Il gateway considera famiglia dell'app, fase e quota locale residua. I profili
+iniziali privilegiano Groq per la prima bozza di un catalogo e OpenRouter per
+gestionali, gruppi e revisioni di cataloghi. Ollama rimane utilizzabile senza
+invio al cloud. Sono preferenze iniziali, da calibrare con prove sui modelli
+effettivamente collegati. I campi `OLLAMA_FIT`, `GROQ_FIT` e
+`OPENROUTER_FIT` accettano un oggetto JSON con punteggi
+`catalog`, `tracker`, `community`, `draft`, `revision` da 1 a 10
+e un eventuale limite `maxInputBytes` da 1 a 32000.
+
+Con consenso cloud, un errore del fornitore o una quota esaurita può far
+passare al successivo candidato gratuito. La proposta mostra quale modello
+ha risposto. Per gestionali e gruppi si preparano i requisiti. La generazione
+di sorgenti resta disponibile per i cataloghi.

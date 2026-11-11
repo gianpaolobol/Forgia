@@ -1,7 +1,8 @@
 import {createHash} from 'node:crypto';
 import {validateSpec,text,type AppSpec} from '../src/core/spec.ts';
 import type {Storage} from '../src/core/storage.ts';
-import type {Provider} from './providers.ts';
+import {ProviderError, type Provider} from './providers.ts';
+import {rankProviders, type RoutingContext} from './routing.ts';
 interface State {version:1;day:string;counts:Record<string,number>;cache:Record<string,AppSpec>}
 const queues=new WeakMap<Storage,Promise<unknown>>();
 export function createGateway(store:Storage,{dailyLimit=20}:{dailyLimit?:number}={}){
@@ -17,24 +18,70 @@ export function createGateway(store:Storage,{dailyLimit=20}:{dailyLimit?:number}
    return {version:1,day,counts:d.day===day?d.counts:{},cache:d.cache};
   }catch{throw Error('Stato quota corrotto: recupero manuale necessario, nessun invio.');}
  }
- function plan(idea:string,p:Provider,cloudConsent:boolean):Promise<{spec:AppSpec;cached:boolean;requestsUsed:number}>{
-  const run=(queues.get(store)??Promise.resolve()).then(async()=>{
-   const prompt=text(idea,'Idea',8000);
-   if(!['local','groq','openrouter'].includes(p.id)||!['local','free'].includes(p.mode))throw Error('Fornitore non supportato in modalità gratuita.');
-   if((p.id==='local')!==(p.mode==='local'))throw Error('Modalità gratuita incoerente.');
-   if(p.mode!=='local'&&!cloudConsent)throw Error('Serve il consenso all’invio al fornitore cloud selezionato.');
-   const state=await load(),key=createHash('sha256').update(JSON.stringify([p.id,p.model,prompt])).digest('hex');
-   if(state.cache[key])return {spec:validateSpec(state.cache[key]),cached:true,requestsUsed:state.counts[p.id]??0};
-   if((state.counts[p.id]??0)>=dailyLimit)throw Object.assign(Error('Quota giornaliera locale raggiunta: lavoro sospeso.'),{status:429});
-   if(!await p.eligible())throw Error('Fornitore gratuito non verificato.');
-   state.counts[p.id]=(state.counts[p.id]??0)+1;
-   await store.setItem('gateway.v1',JSON.stringify(state));
-   const output=await p.complete(prompt,AbortSignal.timeout(45000));
-   const spec=validateSpec(JSON.parse(output));state.cache[key]=spec;
-   const keys=Object.keys(state.cache);if(keys.length>100)delete state.cache[keys[0]];
-   await store.setItem('gateway.v1',JSON.stringify(state));
-   return {spec,cached:false,requestsUsed:state.counts[p.id]};
-  });queues.set(store,run.catch(()=>{}));return run;
+ function enqueue<T>(work: () => Promise<T>): Promise<T> {
+  const run = (queues.get(store) ?? Promise.resolve()).then(work);
+  queues.set(store, run.catch(() => {}));
+  return run;
  }
- return {plan};
+
+ async function attempt(prompt: string, provider: Provider, consent: boolean, state: State, signal: AbortSignal) {
+  if (!['local', 'groq', 'openrouter'].includes(provider.id) || !['local', 'free'].includes(provider.mode)) {
+   throw Error('Fornitore non supportato in modalità gratuita.');
+  }
+  if ((provider.id === 'local') !== (provider.mode === 'local')) throw Error('Modalità gratuita incoerente.');
+  if (provider.mode !== 'local' && !consent) throw Error('Serve il consenso all’invio al fornitore cloud selezionato.');
+  const key = createHash('sha256').update(JSON.stringify([provider.id, provider.model, prompt])).digest('hex');
+  const used = state.counts[provider.id] ?? 0;
+  if (state.cache[key]) return {spec: validateSpec(state.cache[key]), cached: true, requestsUsed: used};
+  if (used >= dailyLimit) throw new ProviderError('Quota giornaliera locale raggiunta: lavoro sospeso.', 429);
+  if (!await provider.eligible(signal)) throw new ProviderError('Fornitore gratuito non verificato.');
+  signal.throwIfAborted();
+  state.counts[provider.id] = used + 1;
+  await store.setItem('gateway.v1', JSON.stringify(state));
+  const output = await provider.complete(prompt, signal);
+  let spec: AppSpec;
+  try {
+   spec = validateSpec(JSON.parse(output));
+  } catch {
+   throw new ProviderError('Il modello ha restituito una specifica non valida.');
+  }
+  state.cache[key] = spec;
+  const keys = Object.keys(state.cache);
+  if (keys.length > 100) delete state.cache[keys[0]];
+  await store.setItem('gateway.v1', JSON.stringify(state));
+  return {spec, cached: false, requestsUsed: state.counts[provider.id]};
+ }
+
+ function plan(idea: string, provider: Provider, consent: boolean) {
+  return enqueue(async () => attempt(text(idea, 'Idea', 8000), provider, consent, await load(), AbortSignal.timeout(45000)));
+ }
+
+ function planAuto(idea: string, providers: readonly Provider[], consent: boolean, context: RoutingContext) {
+  const deadline = AbortSignal.timeout(48000);
+  return enqueue(async () => {
+   deadline.throwIfAborted();
+   const prompt = text(idea, 'Idea', 8000);
+   const state = await load();
+   const remaining = Object.fromEntries(providers.map(p => [p.id, dailyLimit - (state.counts[p.id] ?? 0)]));
+   const ranked = rankProviders(providers, context, prompt, consent, remaining);
+   if (!ranked.length) {
+    throw new ProviderError('Nessun motore gratuito disponibile per questa richiesta. Verifica configurazione, consenso e quote.', 429);
+   }
+   const skipped: string[] = [];
+   for (const {provider, reason} of ranked) {
+    deadline.throwIfAborted();
+    try {
+     const result = await attempt(prompt, provider, consent, state, AbortSignal.any([deadline, AbortSignal.timeout(14000)]));
+     return {...result, routing: {provider: provider.id, model: provider.model, reason, skipped}};
+    } catch (error) {
+     // Remote errors may permit a free fallback. Storage and policy errors stop the request.
+     if (!(error instanceof ProviderError) && !(error instanceof DOMException && error.name === 'TimeoutError')) throw error;
+     skipped.push(provider.id);
+    }
+   }
+   throw new ProviderError('I motori gratuiti compatibili non hanno completato la richiesta.', 429);
+  });
+ }
+
+ return {plan, planAuto};
 }
