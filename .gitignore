@@ -11,3 +11,6 @@ playwright-report/
 
 .sites-checkout/
 .openai/
+
+/android/
+/ios/

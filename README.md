@@ -31,6 +31,10 @@ Per il gateway locale: configurare soltanto le variabili necessarie dell'esempio
 
 Il gateway ascolta solo `127.0.0.1:8787` e accetta il client web locale sulle origini previste. **Non esporlo su Internet o tramite tunnel.** Nessuna autenticazione multiutente, vault o sandbox remota è stata consegnata. Nel pannello ospitato il gateway locale non è utilizzabile; il generatore offline resta disponibile. I progetti sono conservati nel browser/dispositivo, non sincronizzati nel cloud. Esportare per conservarne una copia; cancellare dati del browser o disinstallare elimina i dati locali.
 
+## Collaudo su dispositivi
+
+La [guida di collaudo](docs/COLLAUDO_NATIVO.md) descrive le build di prova e i passaggi da verificare. Gli identificativi iOS e Android usano `it.gianpaolofranceschini.forgia`.
+
 ## Stato delle verifiche
 Leggere `docs/VERIFICHE_2026-11-11.md`. Bundle JS/Hermes per iOS e Android non sono IPA/AAB firmati. Non attestano installazione fisica, TestFlight, Play Store o comportamento nativo. I test browser automatici sono predisposti ma il lancio locale è bloccato dal sandbox; è stato eseguito un collaudo manuale attraverso il browser disponibile.
 

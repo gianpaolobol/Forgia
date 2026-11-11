@@ -1,0 +1,74 @@
+name: Build per collaudo nativo
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm run check && npm test
+      - run: sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;27.1.12297006' 'cmake;3.22.1'
+      - run: npx expo prebuild --platform android --no-install
+      # Il template Expo firma la build locale release con la chiave debug.
+      - run: ./gradlew --no-daemon :app:assembleRelease -PreactNativeArchitectures=arm64-v8a
+        working-directory: android
+      - run: |
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/release/app-release.apk artifacts/Forgia-android-arm64.apk
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose artifacts/Forgia-android-arm64.apk
+          cd artifacts
+          sha256sum Forgia-android-arm64.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Forgia-android-arm64
+          path: artifacts/
+          if-no-files-found: error
+
+  ios-simulator:
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx expo prebuild --platform ios --no-install
+      - run: pod install
+        working-directory: ios
+      - run: |
+          xcodebuild -workspace ios/Forgia.xcworkspace -scheme Forgia -configuration Release \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build-ios \
+            CODE_SIGNING_ALLOWED=NO build
+          mkdir -p artifacts
+          ditto -c -k --sequesterRsrc --keepParent \
+            build-ios/Build/Products/Release-iphonesimulator/Forgia.app artifacts/Forgia-ios-simulator.zip
+          cd artifacts
+          shasum -a 256 Forgia-ios-simulator.zip > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Forgia-ios-simulator
+          path: artifacts/
+          if-no-files-found: error

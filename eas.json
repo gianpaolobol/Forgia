@@ -1,0 +1,17 @@
+{
+  "cli": {
+    "appVersionSource": "local"
+  },
+  "build": {
+    "android-internal": {
+      "distribution": "internal",
+      "android": { "buildType": "apk" }
+    },
+    "ios-simulator": {
+      "ios": { "simulator": true }
+    },
+    "ios-testflight": {
+      "distribution": "store"
+    }
+  }
+}

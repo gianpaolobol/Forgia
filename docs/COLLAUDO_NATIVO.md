@@ -1,0 +1,31 @@
+# Collaudo nativo di Forgia
+
+Usare un’installazione pulita per il primo giro. Annotare piattaforma, modello,
+versione del sistema, versione di Forgia, commit e passaggio in cui compare
+l’eventuale errore.
+
+| Passaggio | Risultato atteso |
+| --- | --- |
+| Apri Forgia in modalità aereo | Si apre la pagina Progetti. |
+| Crea un catalogo, usa i dati di esempio e salva | Il catalogo compare nella lista con sei schede. |
+| Modifica il nome e salva una nuova versione | La cronologia contiene la bozza iniziale e la modifica. |
+| Chiudi e riapri Forgia, poi ripristina la prima versione | Il catalogo è ancora presente. Il ripristino aggiunge una versione. |
+| Esporta i sorgenti e scegli Condividi ZIP | Il sistema apre la condivisione. Il file salvato contiene i sorgenti Expo e il dataset. |
+| Prova a salvare un catalogo senza schede | Forgia mostra il messaggio di validazione e conserva i progetti già salvati. |
+
+## Build e distribuzione
+
+- **Android fisico ARM64.** Scaricare l’APK di collaudo dagli artefatti
+  del workflow GitHub Actions quando il job Android è completato. La firma
+  debug consente l’installazione diretta sui dispositivi compatibili.
+- **iOS Simulator.** Estrarre l’app dal corrispondente artefatto del workflow
+  e installarla in un simulatore avviato con `xcrun simctl install booted Forgia.app`.
+- **iPhone fisico.** Usare il profilo EAS `ios-testflight` con un progetto
+  Expo collegato, credenziali Apple autorizzate e una quota di build gratuita
+  disponibile. La build firmata deve poi essere elaborata da App Store Connect
+  prima dell’assegnazione a un gruppo TestFlight.
+
+Il primo collaudo nativo copre bozza, revisioni e condivisione offline.
+Il collaudo dell’AI si esegue dal pannello web con la demo locale descritta
+nel README. Sul telefono la connessione AI richiede ancora un gateway
+autenticato.

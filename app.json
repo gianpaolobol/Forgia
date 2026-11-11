@@ -6,9 +6,14 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "it.gianpaolofranceschini.forgia",
+      "buildNumber": "1"
     },
-    "android": {},
+    "android": {
+      "package": "it.gianpaolofranceschini.forgia",
+      "versionCode": 1
+    },
     "web": {
       "output": "single"
     },
