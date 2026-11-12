@@ -8,7 +8,8 @@ import {createGateway} from './gateway.ts';
 import {parseFit} from './routing.ts';
 import {diskStorage} from './disk.ts';
 import {createJobs} from './jobs.ts';
-const storage = diskStorage(resolve('.data'));
+const dataDirectory = resolve(process.env.FORGIA_DATA_DIR || '.data');
+const storage = diskStorage(dataDirectory);
 const gateway = createGateway(storage);
 const configs = [
  {id: 'local', prefix: 'OLLAMA', model: process.env.OLLAMA_MODEL ?? ''},
@@ -108,7 +109,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
  }
 }
 
-createServer((req, res) => {
+if (process.env.FORGIA_DISABLE_WEB_GATEWAY !== '1') createServer((req, res) => {
  const origin = req.headers.origin;
  if ((origin && !allowed.has(origin)) || !['127.0.0.1:8787', 'localhost:8787'].includes(req.headers.host ?? '')) {
   res.writeHead(403).end();
@@ -130,15 +131,20 @@ if (process.env.FORGIA_PILOT_HOST) {
  const port = Number(process.env.FORGIA_PILOT_PORT || 8443);
  const certPath = process.env.FORGIA_PILOT_TLS_CERT;
  const keyPath = process.env.FORGIA_PILOT_TLS_KEY;
+ const pfxPath = process.env.FORGIA_PILOT_TLS_PFX;
+ const passphrase = process.env.FORGIA_PILOT_TLS_PFX_PASSWORD;
  const accountsPath = process.env.FORGIA_PILOT_ACCOUNTS;
- if (!certPath || !keyPath || !accountsPath || !Number.isInteger(port) || port < 1 || port > 65535) {
-  throw Error('Configurazione TLS o credenziali pilota mancanti.');
+ if (!accountsPath || !Number.isInteger(port) || port < 1 || port > 65535) {
+  throw Error('Porta o credenziali pilota mancanti.');
  }
- const [cert, key] = await Promise.all([readFile(certPath), readFile(keyPath)]);
+ const tls = pfxPath && passphrase
+  ? {pfx: await readFile(pfxPath), passphrase}
+  : certPath && keyPath ? {cert: await readFile(certPath), key: await readFile(keyPath)} : undefined;
+ if (!tls) throw Error('Configurazione TLS pilota mancante.');
  const readAccounts = async (): Promise<unknown> => JSON.parse(await readFile(accountsPath, 'utf8'));
  if (!Array.isArray(await readAccounts())) throw Error('Elenco tester pilota non valido.');
- const pilotJobs = buildJobs(diskStorage(resolve('.data', 'pilot')), true);
- createHttpsServer({cert, key, minVersion: 'TLSv1.2', requestTimeout: 15_000, headersTimeout: 10_000}, async (req, res) => {
+ const pilotJobs = buildJobs(diskStorage(resolve(dataDirectory, 'pilot')), true);
+ createHttpsServer({...tls, minVersion: 'TLSv1.2', requestTimeout: 15_000, headersTimeout: 10_000}, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('X-Content-Type-Options', 'nosniff');
