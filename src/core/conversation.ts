@@ -1,5 +1,12 @@
 import {text, validateSpec, type AppSpec, type Project} from './spec.ts';
 
+import {createBackedRepository, createRepository, type Storage} from './storage.ts';
+
+export function createConversationRepository(store: Storage) {
+  return createBackedRepository(store, 'forgia.conversations.v1', decodeConversations, JSON.stringify,
+    async () => (await createRepository(store).load()).projects.map(fromProject));
+}
+
 export interface Turn {
   role: 'user' | 'assistant';
   text: string;

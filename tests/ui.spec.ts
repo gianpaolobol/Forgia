@@ -44,3 +44,21 @@ test('senza gateway la richiesta resta salvata e può essere riprovata', async (
   await expect(page.getByRole('button',{name:'Riprova con l’AI'})).toBeVisible();
   await expect(page.getByText('Catalogo di piante.',{exact:true})).toBeVisible();
 });
+
+test('riapre l’ultima conversazione integra dopo un salvataggio danneggiato', async ({page}) => {
+  await page.route('http://127.0.0.1:8787/**', route => route.abort());
+  await page.goto('/');
+  for (const name of ['Erbario', 'Orto']) {
+    await page.getByRole('button', {name: 'Crea un progetto'}).click();
+    await page.getByLabel('Nome della tua app').fill(name);
+    await page.getByLabel('Descrivi la tua idea').fill('Catalogo di piante.');
+    await page.getByRole('button', {name: 'Avvia la chat'}).click();
+    await expect(page.getByRole('button', {name: 'Riprova con l’AI'})).toBeVisible();
+    await page.getByRole('button', {name: 'Progetti', exact: true}).click();
+  }
+  await page.evaluate(() => localStorage.setItem('forgia.conversations.v1', '{'));
+  await page.reload();
+  await expect(page.getByText('Ultimo salvataggio integro recuperato.')).toBeVisible();
+  await page.getByRole('button', {name: 'Apri Erbario'}).click();
+  await expect(page.getByText('Catalogo di piante.', {exact: true})).toBeVisible();
+});
