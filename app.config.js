@@ -1,6 +1,14 @@
 export default ({config}) => {
   const ca = process.env.FORGIA_LAN_PILOT_CA;
-  if (!ca) return config;
+  const iosPilot = process.env.EXPO_PUBLIC_FORGIA_IOS_LAN_PILOT === '1';
+  if (!ca && !iosPilot) return config;
+
+  const ios = {...config.ios, ...(iosPilot ? {buildNumber: '3'} : {}), infoPlist: {
+    ...config.ios?.infoPlist,
+    NSAppTransportSecurity: {...config.ios?.infoPlist?.NSAppTransportSecurity, NSAllowsLocalNetworking: true},
+    NSLocalNetworkUsageDescription: 'Forgia si collega al PC sulla rete locale durante il collaudo.',
+  }};
+  if (!ca) return {...config, ios};
 
   const endpoint = new URL(process.env.EXPO_PUBLIC_FORGIA_PILOT_URL ?? '');
   const octets = endpoint.hostname.split('.').map(Number);
@@ -13,9 +21,7 @@ export default ({config}) => {
   return {
     ...config,
     android: {...config.android, package: 'it.gianpaolofranceschini.forgia.lanpilot'},
-    ios: {...config.ios, infoPlist: {...config.ios?.infoPlist,
-      NSAppTransportSecurity: {...config.ios?.infoPlist?.NSAppTransportSecurity, NSAllowsLocalNetworking: true},
-      NSLocalNetworkUsageDescription: 'Forgia si collega al PC sulla rete locale durante il collaudo.'}},
+    ios,
     plugins: [...(config.plugins ?? []), ['./scripts/with-lan-pilot.cjs', {host: endpoint.hostname, ca}]],
   };
 };

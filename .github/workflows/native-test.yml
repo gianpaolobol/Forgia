@@ -116,6 +116,7 @@ jobs:
     timeout-minutes: 35
     env:
       CI: '1'
+      EXPO_PUBLIC_FORGIA_IOS_LAN_PILOT: ${{ github.head_ref == 'feat/pilota-windows-lan' && '1' || '0' }}
       EXPO_PUBLIC_FORGIA_PILOT_URL: ${{ vars.FORGIA_PILOT_URL }}
     steps:
       - uses: actions/checkout@v5
