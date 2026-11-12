@@ -80,7 +80,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
   const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw Error('Richiesta non valida.');
   const requestKey = req.headers['idempotency-key'];
-  if (session && (typeof requestKey !== 'string' || !/^[!-~]{1,900}:[0-9]{1,3}$/.test(requestKey))) {
+  if (session && (typeof requestKey !== 'string' || !/^[!-~]{1,900}:p[a-z0-9]{1,99}$/.test(requestKey))) {
    return reply(res, 400, {error: 'Identificativo della richiesta non valido.'});
   }
   const receipt = await jobs.submit(

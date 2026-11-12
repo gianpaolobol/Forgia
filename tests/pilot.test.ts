@@ -27,17 +27,19 @@ test('un retry restituisce il lavoro originale e un altro tester non può legger
   let requests = 0;
   const jobs = createJobs(store, async () => ++requests);
   const body = {idea: 'Catalogo di piante', session: alice, provider: 'auto'};
-  const [first, retry] = await Promise.all([jobs.submit(body, 'project:1'), jobs.submit(body, 'project:1')]);
+  const [first, retry] = await Promise.all([jobs.submit(body, 'project:p1'), jobs.submit(body, 'project:p1')]);
   assert.deepEqual(retry, first);
-  assert.deepEqual(await jobs.submit({...body, cloudConsent: true, provider: 'llamacpp'}, 'project:1'), first);
+  assert.deepEqual(await jobs.submit({...body, cloudConsent: true, provider: 'llamacpp'}, 'project:p1'), first);
   assert.equal(await jobs.read(first.id, bob), null);
   while ((await jobs.read(first.id, alice))?.status !== 'done') {
     await new Promise(resolve => setImmediate(resolve));
   }
-  await assert.rejects(jobs.submit({...body, idea: 'Un’altra richiesta'}, 'project:1'), /identificativo/);
+  assert.deepEqual(await jobs.submit({...body, idea: 'Contesto riformattato'}, 'project:p1'), first);
   const reopened = createJobs(store, async () => ++requests);
-  assert.deepEqual(await reopened.submit(body, 'project:1'), first);
+  assert.deepEqual(await reopened.submit(body, 'project:p1'), first);
   assert.equal(requests, 1);
+  const next = await reopened.submit({...body, idea: 'Un’altra richiesta'}, 'project:p2');
+  assert.notEqual(next.id, first.id);
 });
 
 test('due tester condividono la quota ma non la risposta in cache', async () => {
@@ -55,5 +57,8 @@ test('due tester condividono la quota ma non la risposta in cache', async () => 
   assert.equal((await gateway.plan('Stessa idea', provider, false, alice)).cached, false);
   assert.equal((await gateway.plan('Stessa idea', provider, false, bob)).cached, false);
   assert.equal((await gateway.plan('Stessa idea', provider, false, alice)).cached, true);
+  const state = JSON.parse(data.get('gateway.v1')!);
+  assert.deepEqual(state.cache, {});
+  assert.equal(Object.keys(state.pilotCache).length, 2);
   await assert.rejects(gateway.plan('Nuova idea', provider, false, alice), /Quota/);
 });

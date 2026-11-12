@@ -11,6 +11,7 @@ export interface Turn {
   role: 'user' | 'assistant';
   text: string;
   model?: string;
+  requestId?: string;
 }
 
 export interface Conversation {
@@ -42,7 +43,8 @@ export function decodeConversations(value: string): Conversation[] {
     const turns = row.turns.map((turn: Turn): Turn => {
       if (turn?.role !== 'user' && turn?.role !== 'assistant') throw Error('Messaggio non valido.');
       return {role: turn.role, text: text(turn.text, 'Messaggio', 4000),
-        ...(turn.model === undefined ? {} : {model: text(turn.model, 'Modello', 200)})};
+        ...(turn.model === undefined ? {} : {model: text(turn.model, 'Modello', 200)}),
+        ...(turn.requestId === undefined ? {} : {requestId: text(turn.requestId, 'Identificativo del messaggio', 100)})};
     });
     return {id, name: text(row.name, 'Nome', 80), turns, ...(row.spec ? {spec: validateSpec(row.spec)} : {})};
   });

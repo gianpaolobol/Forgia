@@ -1,11 +1,11 @@
-import {createHash, randomUUID} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
 import type {Storage} from '../src/core/storage.ts';
 import {text} from '../src/core/spec.ts';
 import {providerIds} from './providers.ts';
 import {routingContext, type RoutingContext} from './routing.ts';
 
 type Input = {idea: string; provider: string; consent: boolean; context: RoutingContext};
-type Job<R> = {id: string; session: string; requestKey?: string; fingerprint?: string} & (
+type Job<R> = {id: string; session: string; requestKey?: string} & (
   {status: 'queued' | 'running'; input: Input} |
   {status: 'done'; result: R} |
   {status: 'failed'; error: string; statusCode?: number}
@@ -23,7 +23,7 @@ export function createJobs<R>(store: Storage, run: (input: Input, backlog: numbe
     const saved: Job<R>[] = raw === null ? [] : JSON.parse(raw);
     if (!Array.isArray(saved)) throw Error('Coda locale non valida.');
     jobs = saved.map(job => job.status === 'running'
-      ? {id: job.id, session: job.session, requestKey: job.requestKey, fingerprint: job.fingerprint, status: 'failed', error: 'Lavoro interrotto dal riavvio. Puoi inviarlo di nuovo.'}
+      ? {id: job.id, session: job.session, requestKey: job.requestKey, status: 'failed', error: 'Lavoro interrotto dal riavvio. Puoi inviarlo di nuovo.'}
       : job);
     if (saved.some(job => job.status === 'running')) await store.setItem(key, JSON.stringify(jobs));
   })();
@@ -53,7 +53,7 @@ export function createJobs<R>(store: Storage, run: (input: Input, backlog: numbe
       });
       if (!task) return;
       const {job, backlog} = task;
-      const identity = {id: job.id, session: job.session, requestKey: job.requestKey, fingerprint: job.fingerprint};
+      const identity = {id: job.id, session: job.session, requestKey: job.requestKey};
       let terminal: Job<R>;
       try {
         terminal = {...identity, status: 'done', result: await run(job.input, backlog, job.session)};
@@ -93,19 +93,15 @@ export function createJobs<R>(store: Storage, run: (input: Input, backlog: numbe
       if (typeof session !== 'string' || !sessionPattern.test(session)) throw Error('Sessione di lavoro non valida.');
       if (typeof provider !== 'string' || (provider !== 'auto' && !providerIds.includes(provider))) throw Error('Motore non valido.');
       const input = {idea, provider, consent: body.cloudConsent === true, context: routingContext(body.kind, body.phase)};
-      const fingerprint = requestKey && createHash('sha256').update(JSON.stringify([idea, input.context])).digest('hex');
       const id = await locked(async () => {
         const previous = requestKey && jobs.findLast(job => job.session === session && job.requestKey === requestKey);
-        if (previous && previous.status !== 'failed') {
-          if (previous.fingerprint !== fingerprint) throw Error('Richiesta diversa con lo stesso identificativo.');
-          return previous.id;
-        }
+        if (previous && previous.status !== 'failed') return previous.id;
         const id = randomUUID();
         const active = jobs.filter(job => job.status === 'queued' || job.status === 'running');
         if (active.length >= 16 || active.filter(job => job.session === session).length >= 3) {
           throw Object.assign(Error('Coda piena. Attendi la fine di un lavoro prima di inviarne un altro.'), {status: 429});
         }
-        await save([...jobs, {id, session, requestKey, fingerprint, status: 'queued', input}]);
+        await save([...jobs, {id, session, requestKey, status: 'queued', input}]);
         return id;
       });
       start();
