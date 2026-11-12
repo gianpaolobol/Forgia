@@ -5,13 +5,33 @@
   "build": {
     "android-internal": {
       "distribution": "internal",
-      "android": { "buildType": "apk" }
+      "android": {
+        "buildType": "apk"
+      }
     },
     "ios-simulator": {
-      "ios": { "simulator": true }
+      "ios": {
+        "simulator": true
+      }
     },
     "ios-testflight": {
       "distribution": "store"
+    },
+    "ios-lan-testflight": {
+      "distribution": "store",
+      "ios": {
+        "image": "latest"
+      },
+      "env": {
+        "EXPO_PUBLIC_FORGIA_IOS_LAN_PILOT": "1"
+      }
+    }
+  },
+  "submit": {
+    "ios-lan-testflight": {
+      "ios": {
+        "ascAppId": "6833693833"
+      }
     }
   }
 }

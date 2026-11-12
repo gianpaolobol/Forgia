@@ -3,10 +3,12 @@ import {Platform} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {text, validateSpec} from '../core/spec';
 import {createConversationRepository, requestedAccess, type Conversation} from '../core/conversation';
+import {lanPilotOrigin} from '../core/lanPilot';
 import {generateProject} from '../core/generator';
 import {exportBundle} from './export';
 
 export type Page = 'home' | 'new' | 'detail' | 'engines' | 'access' | 'method';
+const iosLanPilot = Platform.OS === 'ios' && process.env.EXPO_PUBLIC_FORGIA_IOS_LAN_PILOT === '1';
 const localAPI = 'http://127.0.0.1:8787';
 const configuredPilot = process.env.EXPO_PUBLIC_FORGIA_PILOT_URL?.trim().replace(/\/$/, '');
 const pilotAPI = configuredPilot && /^https:\/\/[a-z0-9.-]+(?::[0-9]{1,5})?$/i.test(configuredPilot)
@@ -41,8 +43,9 @@ export function useWorkspace() {
   const [selected, setSelected] = useState('auto');
   const [consent, setConsent] = useState(false);
   const [testerCode, setTesterCode] = useState('');
-  const nativePilot = Platform.OS !== 'web' && !!pilotAPI;
-  const api = Platform.OS === 'web' ? localAPI : pilotAPI;
+  const [pilotAddress, setPilotAddress] = useState(pilotAPI ?? '');
+  const nativePilot = iosLanPilot || (Platform.OS !== 'web' && !!pilotAPI);
+  const api = Platform.OS === 'web' ? localAPI : iosLanPilot ? lanPilotOrigin(pilotAddress) : pilotAPI;
   const [engineNote, setEngineNote] = useState('Nessun motore AI collegato');
   const session = useRef<string | undefined>(undefined);
   const locked = useRef(false);
@@ -80,6 +83,15 @@ export function useWorkspace() {
     setProjects(next);
   }
 
+  function changePilotAddress(value: string) {
+    if (lanPilotOrigin(value) !== lanPilotOrigin(pilotAddress)) {
+      setTesterCode('');
+      setProviders([]);
+      setEngineNote('Nessun motore AI collegato');
+    }
+    setPilotAddress(value);
+  }
+
   function credentials(): Record<string, string> {
     if (Platform.OS === 'web') return {};
     const code = testerCode.trim().toLowerCase();
@@ -88,7 +100,7 @@ export function useWorkspace() {
   }
 
   async function readProviders() {
-    if (!api) throw Error('Gateway AI mobile non configurato per questa build.');
+    if (!api) throw Error(iosLanPilot ? 'Inserisci l’indirizzo HTTPS del gateway pilota sulla rete locale.' : 'Gateway AI mobile non configurato per questa build.');
     const {response, body: data} = await gatewayRequest(api + '/providers', {headers: credentials()}, 4000);
     if (!response.ok) throw Error(data.error ?? 'Gateway AI non raggiungibile.');
     const available: typeof providers = data.providers.filter((item: typeof providers[number]) => item.configured);
@@ -201,7 +213,7 @@ export function useWorkspace() {
 
   return {page, projects, project, ready, busy, jobStatus, error, name, setName, idea, setIdea, note, setNote,
     providers, selected, setSelected, consent, setConsent, engineNote, access, go, start, open, create, send,
-    retry, download, refreshEngines, liveAI: !!api, nativePilot, testerCode, setTesterCode};
+    retry, download, refreshEngines, liveAI: !!api, nativePilot, iosLanPilot, pilotAddress, changePilotAddress, testerCode, setTesterCode};
 }
 
 export type Workspace = ReturnType<typeof useWorkspace>;

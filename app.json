@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Forgia",
-    "slug": "forgia-app",
+    "slug": "forgia",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -30,6 +30,12 @@
         }
       ]
     ],
-    "icon": "./assets/icon.png"
+    "icon": "./assets/icon.png",
+    "owner": "gianpaolobol",
+    "extra": {
+      "eas": {
+        "projectId": "5d524a72-f7ec-4611-8b14-64201c08822b"
+      }
+    }
   }
 }
