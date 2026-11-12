@@ -22,6 +22,9 @@ test('dall’idea alla chat, al risultato AI e agli accessi per progetto', async
   await page.getByLabel('Descrivi la tua idea').fill('Crea un catalogo con Lavanda e collega un repository GitHub.');
   await page.getByRole('button',{name:'Avvia la chat'}).click();
   await expect(page.getByText('Il catalogo è pronto per una prima verifica.')).toBeVisible();
+  await page.getByRole('button', {name: 'Anteprima catalogo'}).click();
+  await expect(page.getByText('Lavanda', {exact: true})).toBeVisible();
+  await expect(page.getByText('Aromatiche', {exact: true})).toBeVisible();
   const download=page.waitForEvent('download');
   await page.getByRole('button',{name:'Esporta sorgenti ZIP'}).click();
   expect((await download).suggestedFilename()).toMatch(/erbario-di-gian.*zip/);

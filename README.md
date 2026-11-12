@@ -27,8 +27,8 @@ demo usa solo il modello locale.
 
 Su iOS e Android il microfono richiede le autorizzazioni del sistema e usa
 il riconoscimento vocale sul dispositivo quando disponibile. La chat salva i
-messaggi sul dispositivo. Per le risposte AI il client nativo richiede ancora
-un gateway HTTPS autenticato.
+messaggi sul dispositivo. Per le risposte AI il client nativo può collegarsi al
+[gateway HTTPS per tester](docs/PILOTA_MOBILE.md) in una build configurata.
 
 ## Avvio locale
 Node 24 e npm. `npm ci`, poi `npm start` per il client oppure `npm run web`. `npm test` esegue le prove del dominio e del gateway; `npm run check` il controllo TypeScript; `npm run export:web` produce il pannello web statico.

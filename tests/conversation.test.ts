@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {decodeConversations, requestedAccess, type Conversation} from '../src/core/conversation.ts';
 
 test('salva una conversazione prima che esista una specifica', () => {
- const draft: Conversation = {id:'p1', name:'Erbario', turns:[{role:'user',text:'Catalogo delle piante.'}]};
+ const draft: Conversation = {id:'p1', name:'Erbario', turns:[{role:'user',text:'Catalogo delle piante.',requestId:'p-turno-1'}]};
  assert.deepEqual(decodeConversations(JSON.stringify([draft])), [draft]);
  assert.throws(() => decodeConversations(JSON.stringify([draft, draft])), /Cronologia/);
 });

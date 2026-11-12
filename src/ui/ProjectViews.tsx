@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useState} from 'react';
 import {Image, Pressable, Text, View} from 'react-native';
 import {forge} from './Brand';
 import {Dictation} from './Dictation';
@@ -35,6 +35,7 @@ export function Editor({w}: {w: Workspace}) {
 }
 
 export function Detail({w}: {w: Workspace}) {
+  const [preview, setPreview] = useState(false);
   if (!w.project) return null;
   const project = w.project;
   const access = w.access.filter(item => item.projectId === project.id);
@@ -52,7 +53,20 @@ export function Detail({w}: {w: Workspace}) {
     {!!w.jobStatus && <Tag>{w.jobStatus}</Tag>}
     {w.liveAI && project.turns.at(-1)?.role === 'user' && !w.busy &&
       <Button secondary onPress={w.retry}>Riprova con l’AI</Button>}
-    {project.spec?.kind === 'catalog' && <Button secondary onPress={w.download}>Esporta sorgenti ZIP</Button>}
+    {project.spec?.kind === 'catalog' && <>
+      <View style={s.card}>
+        <Pressable accessibilityRole="button" accessibilityState={{expanded: preview}}
+          onPress={() => setPreview(open => !open)} style={s.between}>
+          <Text style={s.heading}>Anteprima catalogo</Text>
+          <Tag>{project.spec.items.length} schede</Tag>
+        </Pressable>
+        {preview && project.spec.items.map(item => <View key={item.name}>
+          <Text style={s.label}>{item.name}</Text>
+          <Text style={s.body}>{item.category}{item.color ? ' · ' + item.color : ''}</Text>
+        </View>)}
+      </View>
+      <Button secondary onPress={w.download}>Esporta sorgenti ZIP</Button>
+    </>}
     <View style={s.card}>
       <Field label="Messaggio" placeholder="Descrivi il prossimo passo" value={w.note} onChangeText={w.setNote}
         multiline maxLength={4000}/>

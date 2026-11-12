@@ -26,9 +26,8 @@ l’eventuale errore.
   prima dell’assegnazione a un gruppo TestFlight.
 
 Il primo collaudo nativo copre bozza, revisioni e condivisione offline.
-Il collaudo dell’AI si esegue dal pannello web con la demo locale descritta
-nel README. Sul telefono la connessione AI richiede ancora un gateway
-autenticato.
+Il collaudo dell’AI sul telefono usa la [configurazione pilota](PILOTA_MOBILE.md).
+Per il pannello web usare la demo locale descritta nel README.
 
 ## Pacchetti per gli store
 
