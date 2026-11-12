@@ -1,15 +1,14 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 import {Platform} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {createRepository} from '../core/storage';
 import {text, validateSpec} from '../core/spec';
-import {decodeConversations, fromProject, requestedAccess, type Conversation} from '../core/conversation';
+import {createConversationRepository, requestedAccess, type Conversation} from '../core/conversation';
 import {generateProject} from '../core/generator';
 import {exportBundle} from './export';
 
 export type Page = 'home' | 'new' | 'detail' | 'engines' | 'access' | 'method';
 const API = 'http://127.0.0.1:8787';
-const STORAGE_KEY = 'forgia.conversations.v1';
+const conversations = createConversationRepository(AsyncStorage);
 const id = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
 const errorText = (error: unknown) => error instanceof Error ? error.message : 'Operazione non riuscita.';
 
@@ -38,13 +37,12 @@ export function useWorkspace() {
     let active = true;
     async function load() {
       try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        const rows = stored !== null ? decodeConversations(stored)
-          : (await createRepository(AsyncStorage).load()).projects.map(fromProject);
+        const {projects: rows, recovered} = await conversations.load();
         if (active) {
           saved.current = rows;
           setProjects(rows);
           setReady(true);
+          if (recovered) setError('Ultimo salvataggio integro recuperato.');
         }
       } catch (cause) {
         if (active) setError(errorText(cause));
@@ -60,9 +58,7 @@ export function useWorkspace() {
 
   async function persist(row: Conversation) {
     const next = [row, ...saved.current.filter(item => item.id !== row.id)];
-    const encoded = JSON.stringify(next);
-    decodeConversations(encoded);
-    await AsyncStorage.setItem(STORAGE_KEY, encoded);
+    await conversations.save(next);
     saved.current = next;
     setProjects(next);
   }
