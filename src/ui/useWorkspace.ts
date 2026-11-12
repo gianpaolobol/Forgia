@@ -92,17 +92,20 @@ export function useWorkspace() {
       throw Error('Collega un motore nella sezione Motori AI e riprova dalla chat.');
     }
     const last = row.turns[row.turns.length - 1];
-    const prompt = JSON.stringify({
-      name: row.name,
-      instruction: last.text,
-      recent: row.turns.slice(-4, -1).map(turn => ({role: turn.role, text: turn.text.slice(0, 600)})),
-      current: row.spec && {kind: row.spec.kind, idea: row.spec.idea.slice(0, 600)},
-      request: 'Analizza la richiesta e prepara la prossima specifica per il progetto.',
+    const history = row.turns.slice(-4, -1).map(turn => ({role: turn.role, text: turn.text.slice(0, 350)}));
+    const currentSpec = row.spec && {kind: row.spec.kind, idea: row.spec.idea.slice(0, 500),
+      quiz: row.spec.quiz, items: row.spec.items.slice(0, 8)};
+    const prompt = JSON.stringify({name: row.name, instruction: last.text, recent: history,
+      current: currentSpec,
+      request: 'Prepara la prossima specifica. Una sola scheda per nome. Conserva i dati esistenti e aggiungi solo le schede richieste.'});
+    const boundedPrompt = prompt.length <= 8000 ? prompt : JSON.stringify({
+      name: row.name, instruction: last.text, current: currentSpec && {kind: currentSpec.kind, idea: currentSpec.idea},
     });
+    if (boundedPrompt.length > 8000) throw Error('Il messaggio è troppo lungo per il motore. Dividilo in più messaggi.');
     session.current ||= globalThis.crypto.randomUUID();
     const response = await fetch(API + '/jobs', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({session: session.current, idea: prompt, provider: selected,
+      body: JSON.stringify({session: session.current, idea: boundedPrompt, provider: selected,
         cloudConsent: consent, kind: row.spec?.kind, phase: row.spec ? 'revision' : 'draft'}),
       signal: AbortSignal.timeout(8000),
     });
@@ -115,8 +118,11 @@ export function useWorkspace() {
       if (!status.ok || job.status === 'failed') throw Error(job.error ?? 'Elaborazione non riuscita.');
       if (job.status === 'done') {
         const proposed = validateSpec(job.result.spec);
-        const spec = validateSpec({...proposed, name: row.name,
-          ...(row.spec?.items.length ? {items: row.spec.items, quiz: row.spec.quiz} : {})});
+        const items = row.spec?.items.length
+          ? [...row.spec.items, ...proposed.items.filter(candidate => !row.spec?.items.some(
+            existing => existing.name.toLocaleLowerCase('it') === candidate.name.toLocaleLowerCase('it')))]
+          : proposed.items;
+        const spec = validateSpec({...proposed, name: row.name, items, quiz: row.spec?.quiz ?? proposed.quiz});
         await persist({...row, spec, turns: [...row.turns, {role: 'assistant', text: spec.idea, model: job.result.routing?.model}]});
         return;
       }
