@@ -19,10 +19,16 @@ Su Linux x86-64, con Node 24, npm, Python 3, curl e shasum disponibili, esegui
 Su macOS o altre architetture usa un `llama-server` già installato nel PATH
 oppure indica il binario con `FORGIA_LLAMA_SERVER`.
 
-Apri `http://127.0.0.1:8081` sullo stesso computer. In **Motori AI** aggiorna i
-collegamenti. Crea un progetto, descrivi un catalogo con due o tre schede,
-premi **Prepara i campi con AI gratuita**, controlla e applica la proposta.
-Salva la bozza ed esporta i sorgenti ZIP. Questa demo usa solo il modello locale.
+Apri `http://127.0.0.1:8081` sullo stesso computer. Crea un progetto con nome e
+idea, poi scegli **Avvia la chat**. La chat usa il motore configurato per
+preparare la specifica. Le richieste per servizi riconosciuti compaiono in
+**Accessi**. I cataloghi supportati si possono esportare dalla chat. Questa
+demo usa solo il modello locale.
+
+Su iOS e Android il microfono richiede le autorizzazioni del sistema e usa
+il riconoscimento vocale sul dispositivo quando disponibile. La chat salva i
+messaggi sul dispositivo. Per le risposte AI il client nativo richiede ancora
+un gateway HTTPS autenticato.
 
 ## Avvio locale
 Node 24 e npm. `npm ci`, poi `npm start` per il client oppure `npm run web`. `npm test` esegue le prove del dominio e del gateway; `npm run check` il controllo TypeScript; `npm run export:web` produce il pannello web statico.

@@ -9,6 +9,28 @@ permissions:
   contents: read
 
 jobs:
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: CI=1 npm run export:web
+      - run: |
+          python3 -m http.server 8081 --bind 127.0.0.1 --directory dist &
+          server=$!
+          trap 'kill "$server"' EXIT
+          for attempt in {1..15}; do
+            if curl --fail --silent http://127.0.0.1:8081/ >/dev/null; then break; fi
+            sleep 1
+          done
+          npm run test:ui
+
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 35

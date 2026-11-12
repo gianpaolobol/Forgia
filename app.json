@@ -8,17 +8,25 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "it.gianpaolofranceschini.forgia",
-      "buildNumber": "1"
+      "buildNumber": "2"
     },
     "android": {
       "package": "it.gianpaolofranceschini.forgia",
-      "versionCode": 1
+      "versionCode": 2
     },
     "web": {
       "output": "single"
     },
     "plugins": [
-      "expo-sharing"
-    ]
+      "expo-sharing",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Consenti a Forgia di usare il microfono per dettare le idee.",
+          "speechRecognitionPermission": "Consenti a Forgia di trascrivere le idee che detti."
+        }
+      ]
+    ],
+    "icon": "./assets/icon.png"
   }
 }
