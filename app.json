@@ -6,14 +6,30 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "it.gianpaolofranceschini.forgia",
+      "buildNumber": "2",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "La libreria Foto non è necessaria per creare o dettare progetti in Forgia. Per esportare i sorgenti, Forgia apre il menu di condivisione di iOS."
+      }
     },
-    "android": {},
+    "android": {
+      "package": "it.gianpaolofranceschini.forgia",
+      "versionCode": 2
+    },
     "web": {
       "output": "single"
     },
     "plugins": [
-      "expo-sharing"
-    ]
+      "expo-sharing",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Consenti a Forgia di usare il microfono per dettare le idee.",
+          "speechRecognitionPermission": "Consenti a Forgia di trascrivere le idee che detti."
+        }
+      ]
+    ],
+    "icon": "./assets/icon.png"
   }
 }

@@ -1,10 +1,59 @@
-import React from 'react';import {View,Text,ScrollView,Pressable,useWindowDimensions,ActivityIndicator} from 'react-native';import {SafeAreaProvider,SafeAreaView} from 'react-native-safe-area-context';
-import {s,C} from './src/ui/theme';import {Tag,Button} from './src/ui/parts';import {Home,Editor,Detail} from './src/ui/ProjectViews';import {Engines,Access,Method} from './src/ui/InfoViews';import {useWorkspace} from './src/ui/useWorkspace';
-const nav=[['home','Progetti','◫'],['engines','Motori AI','✳'],['access','Accessi','⌘'],['method','Il metodo','↗']] as const;
-export default function App(){return <SafeAreaProvider><Workspace/></SafeAreaProvider>}
-function Workspace(){const w=useWorkspace(),mobile=useWindowDimensions().width<850;return <SafeAreaView style={s.root}><View style={s.shell}>
- {!mobile&&<View style={s.sidebar}><View style={s.row}><View style={{width:42,height:42,borderRadius:12,backgroundColor:C.lime,alignItems:'center',justifyContent:'center'}}><Text style={{fontSize:26,color:C.ink}}>✳</Text></View><Text style={s.logo}>forgia</Text></View><View style={s.nav}>{nav.map(([id,title,icon])=><Pressable key={id} accessibilityRole="button" accessibilityLabel={title} style={[s.navItem,w.page===id&&s.navActive]} onPress={()=>w.go(id)}><Text style={{color:'#DDE8CD',fontSize:20}}>{icon}</Text><Text style={s.navText}>{title}</Text></Pressable>)}</View><Button onPress={w.start} disabled={!w.ready}>＋ Nuova idea</Button><View style={s.sideNote}><Text style={{color:'#E0E8CC',fontWeight:'700'}}>Piccoli passi. App vere.</Text><Text style={[s.small,{color:'#B4C8B9'}]}>Il tuo lavoro resta tuo.{"\n"}Dalla prima bozza alla beta.</Text><Text style={[s.small,{color:'#B4C8B9'}]}>Nato da cinque progetti reali.</Text></View></View>}
- <View style={s.main}><View style={[s.topbar,mobile&&{paddingHorizontal:20,paddingVertical:14}]}><Text style={mobile?{fontSize:26,fontWeight:'800',color:C.ink}:s.small}>{mobile?'forgia':`Il tuo laboratorio / ${w.page==='new'?'Nuova idea':w.page==='detail'?'Progetto':nav.find(n=>n[0]===w.page)?.[1]}`}</Text><Tag>Budget API · 0 €</Tag></View>
- <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[s.page,mobile&&s.mobilePage]}>{w.recovered&&<View style={s.notice}><Text style={s.body}>Recuperata l’ultima copia integra. Controlla le versioni dei progetti prima di proseguire.</Text></View>}{!!w.error&&<Text accessibilityRole="alert" style={s.error}>{w.error}</Text>}{!w.ready&&!w.error?<ActivityIndicator color={C.green}/>:<>{w.page==='home'&&<Home w={w} mobile={mobile}/ >}{w.page==='new'&&<Editor w={w} mobile={mobile}/ >}{w.page==='detail'&&<Detail w={w} mobile={mobile}/ >}{w.page==='engines'&&<Engines w={w} mobile={mobile}/ >}{w.page==='access'&&<Access mobile={mobile}/ >}{w.page==='method'&&<Method mobile={mobile}/ >}<Text style={s.footer}>Forgia · sviluppo 0.1 · nessuna beta nativa certificata · nessuna API a pagamento attiva</Text></>}</ScrollView>
- {mobile&&<View style={s.bottomNav}>{nav.map(([id,title,icon])=><Pressable key={id} accessibilityRole="button" accessibilityLabel={title} onPress={()=>w.go(id)} style={s.bottomItem}><Text style={{fontSize:20,color:w.page===id?C.green:C.muted}}>{icon}</Text><Text style={{fontSize:10,color:w.page===id?C.green:C.muted,fontWeight:w.page===id?'700':'400'}}>{title}</Text></Pressable>)}</View>}
- </View></View></SafeAreaView>}
+import React, {useEffect, useRef} from 'react';
+import {ActivityIndicator, ImageBackground, KeyboardAvoidingView, Platform, ScrollView, Text, View, useWindowDimensions} from 'react-native';
+import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
+import {s, C} from './src/ui/theme';
+import {NavTile, Wordmark, steel} from './src/ui/Brand';
+import {Home, Editor, Detail} from './src/ui/ProjectViews';
+import {Engines, Access, Method} from './src/ui/InfoViews';
+import {useWorkspace} from './src/ui/useWorkspace';
+
+const nav = [['home','Progetti'], ['engines','Motori AI'], ['access','Accessi'], ['method','Il metodo']] as const;
+
+export default function App() {
+  return <SafeAreaProvider><Workspace/></SafeAreaProvider>;
+}
+
+function Workspace() {
+  const w = useWorkspace();
+  const mobile = useWindowDimensions().width < 850;
+  const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const previousPage = useRef(w.page);
+  const turnCount = w.project?.turns.length ?? 0;
+  useEffect(() => {
+    if (w.page === 'detail') scroll.current?.scrollToEnd({animated: previousPage.current === 'detail'});
+    else scroll.current?.scrollTo({y: 0, animated: false});
+    previousPage.current = w.page;
+  }, [w.page, w.project?.id, turnCount]);
+
+  const navigation = nav.map(([page, label]) => <NavTile key={page} icon={page} title={label} mobile={mobile}
+    active={w.page === page || (page === 'home' && (w.page === 'new' || w.page === 'detail'))} onPress={() => w.go(page)}/>);
+  return <SafeAreaView style={{flex: 1, backgroundColor: '#211e1b'}}>
+    <KeyboardAvoidingView style={{flex: 1}} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={[s.root, s.shell]}>
+        {!mobile && <ImageBackground source={steel} resizeMode="repeat" style={s.sidebar}>
+          <Wordmark/>
+          <View style={s.nav}>{navigation}</View>
+        </ImageBackground>}
+        <View style={s.main}>
+          {mobile && <ImageBackground source={steel} resizeMode="repeat" style={[s.topbar, {justifyContent: 'center', paddingVertical: 10}]}>
+            <Wordmark/>
+          </ImageBackground>}
+          <ScrollView ref={scroll} keyboardShouldPersistTaps="handled"
+            contentContainerStyle={[s.page, mobile && s.mobilePage]}>
+            {!!w.error && <Text accessibilityRole="alert" style={s.error}>{w.error}</Text>}
+            {!w.ready && !w.error && <ActivityIndicator color={C.ink}/>}
+            {w.ready && <>
+              {w.page === 'home' && <Home w={w}/>}
+              {w.page === 'new' && <Editor w={w}/>}
+              {w.page === 'detail' && <Detail w={w}/>}
+              {w.page === 'engines' && <Engines w={w} mobile={mobile}/>}
+              {w.page === 'access' && <Access w={w}/>}
+              {w.page === 'method' && <Method mobile={mobile}/>}
+            </>}
+          </ScrollView>
+          {mobile && <ImageBackground source={steel} resizeMode="repeat" style={s.bottomNav}>{navigation}</ImageBackground>}
+        </View>
+      </View>
+    </KeyboardAvoidingView>
+  </SafeAreaView>;
+}

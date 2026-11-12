@@ -1,0 +1,159 @@
+name: Build per collaudo nativo
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: CI=1 npm run export:web
+      - run: |
+          python3 -m http.server 8081 --bind 127.0.0.1 --directory dist &
+          server=$!
+          trap 'kill "$server"' EXIT
+          for attempt in {1..15}; do
+            if curl --fail --silent http://127.0.0.1:8081/ >/dev/null; then break; fi
+            sleep 1
+          done
+          npm run test:ui
+
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm run check && npm test
+      - name: Installa SDK Android
+        run: |
+          sdk_root="$RUNNER_TEMP/forgia-android-sdk"
+          mkdir -p "$sdk_root/cmdline-tools"
+          curl --fail --location --retry 2 https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip -o "$RUNNER_TEMP/android-cli.zip"
+          unzip -q "$RUNNER_TEMP/android-cli.zip" -d "$sdk_root/cmdline-tools"
+          mv "$sdk_root/cmdline-tools/cmdline-tools" "$sdk_root/cmdline-tools/latest"
+          export ANDROID_HOME="$sdk_root"
+          export ANDROID_SDK_ROOT="$sdk_root"
+          manager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          set +o pipefail
+          yes | "$manager" --licenses >/dev/null
+          set -o pipefail
+          "$manager" --channel=3 'platforms;android-37.0' 'build-tools;37.0.0' 'ndk;27.1.12297006' 'cmake;3.22.1'
+          printf 'ANDROID_HOME=%s\nANDROID_SDK_ROOT=%s\n' "$sdk_root" "$sdk_root" >> "$GITHUB_ENV"
+      - run: npx expo prebuild --platform android --no-install
+      # Il template Expo firma la build locale release con la chiave debug.
+      - run: ./gradlew --no-daemon :app:assembleRelease -PreactNativeArchitectures=arm64-v8a
+        working-directory: android
+      - run: |
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/release/app-release.apk artifacts/Forgia-android-arm64.apk
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose artifacts/Forgia-android-arm64.apk
+          cd artifacts
+          sha256sum Forgia-android-arm64.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Forgia-android-arm64
+          path: artifacts/
+          if-no-files-found: error
+
+      - name: Compila Android App Bundle senza firma
+        working-directory: android
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          gradle = Path('app/build.gradle')
+          text = gradle.read_text()
+          start = text.index('        release {', text.index('    buildTypes {'))
+          line = '            signingConfig signingConfigs.debug\n'
+          signature = text.index(line, start)
+          gradle.write_text(text[:signature] + text[signature + len(line):])
+          PYTHON
+          ./gradlew --no-daemon :app:bundleRelease
+          mkdir -p ../store-android
+          cp app/build/outputs/bundle/release/app-release.aab ../store-android/Forgia-android-unsigned.aab
+          cd ../store-android
+          python3 - <<'PYTHON'
+          from zipfile import ZipFile
+          with ZipFile('Forgia-android-unsigned.aab') as bundle:
+              names = bundle.namelist()
+              assert 'BundleConfig.pb' in names
+              assert 'base/manifest/AndroidManifest.xml' in names
+              assert not any(n.startswith('META-INF/') and n.endswith(('.RSA', '.DSA', '.EC', '.SF')) for n in names)
+          PYTHON
+          sha256sum Forgia-android-unsigned.aab > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Forgia-android-unsigned-aab
+          path: store-android/
+          if-no-files-found: error
+
+  ios-simulator:
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx expo prebuild --platform ios --no-install
+      - run: pod install
+        working-directory: ios
+      - run: |
+          xcodebuild -workspace ios/Forgia.xcworkspace -scheme Forgia -configuration Release \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build-ios \
+            CODE_SIGNING_ALLOWED=NO build
+          mkdir -p artifacts
+          ditto -c -k --sequesterRsrc --keepParent \
+            build-ios/Build/Products/Release-iphonesimulator/Forgia.app artifacts/Forgia-ios-simulator.zip
+          cd artifacts
+          shasum -a 256 Forgia-ios-simulator.zip > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Forgia-ios-simulator
+          path: artifacts/
+          if-no-files-found: error
+      - name: Compila archivio iOS per iPhone senza firma
+        run: |
+          xcodebuild -workspace ios/Forgia.xcworkspace -scheme Forgia -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Forgia.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO archive
+          app="$RUNNER_TEMP/Forgia.xcarchive/Products/Applications/Forgia.app"
+          test -f "$app/Forgia"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = it.gianpaolofranceschini.forgia
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$app/Info.plist")" = iPhoneOS
+          mkdir -p store-ios
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/Forgia.xcarchive" store-ios/Forgia-ios-unsigned-xcarchive.zip
+          cd store-ios
+          shasum -a 256 Forgia-ios-unsigned-xcarchive.zip > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Forgia-ios-unsigned-xcarchive
+          path: store-ios/
+          if-no-files-found: error
