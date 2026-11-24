@@ -1,4 +1,4 @@
-# Forgia V1.0 — piano maestro v0.2
+# Forgia V1.0 — piano maestro v0.3
 Data: 2026-11-24. Stato: proposta, NON approvata da revisore indipendente. Revisore logico previsto: RV-01; identità/modello/sessione da registrare all'assegnazione. Non equiparare questo autore a un secondo agente. La presente baseline deve essere revisionata prima dell'implementazione applicativa.
 
 ## Inventario verificato su GitHub
@@ -60,3 +60,15 @@ Baseline per review: main f8e64a98a37d4f40177ea0bbb13006db93ee874e, stack #4 fed
 
 ### Richiesta di review RV-01
 Revisore esterno: verificare copertura requisiti F00–F13, procedura F02 (incluso copyright), casi R01–R06, sicurezza F01/F08/F09, dipendenze e criteri misurabili. Registrare identità/modello/sessione, SHA del piano e decisione APPROVED oppure CHANGES_REQUESTED con rilievi e criteri. Conservare stessa identità logica e baseline per review dei deliverable; non sostituire una review indipendente con autocontrollo. Se non disponibile, eseguire inventario e preparazione evidenze, non avviare implementazioni applicative. Stato v0.2: proposta, gate non soddisfatto.
+
+## Addendum v0.3 — evidenze riprodotte e gate CI (24 novembre 2026)
+Baseline invariata main f8e64a98, stack #4 fed1b414, PR #5 502880bc; #6 prima di questa iterazione 0a40a3cf. Tutte le PR #1–6 ancora aperte, API mergeable true (non è un'approvazione). RV-01 non assegnato, nessuna review registrata su #6. Nessun nuovo run PR sullo SHA #6 di partenza. La v0.3 è una proposta, non un piano approvato.
+
+Evidenze e riproduzione: [audit iterazione 3](evidence/2026-11-24-iteration-03.md). Node 22.16.0, cinque blob sorgenti verificati per SHA, 5 test mirati: 3 pass, 2 fail. R01 confermato sullo storage (lost update fra istanze), test coda multiprocesso ancora necessario. R07: digest duplicato tra identità viene accettato con scelta del primo ID. R08: profilo iOS dipende dal nome esatto del branch storico e la CI non copre tutti i target stacked; test di configurazione flag 0/1 passato, rilievo workflow statico. Nessuna modifica applicativa.
+
+| ID | Dipende | Criterio aggiuntivo | Evidenza richiesta |
+|---|---|---|---|
+| R07 | F08,F09 | Configurazione account fail-closed: rifiutare digest condivisi, ID duplicati o mapping ambiguo, validazione all'avvio e al reload, nessuna riattribuzione silenziosa | fixture sintetiche, scadenza/revoca, ordine invertito, reload atomico e audit redatto; nessuna credenziale reale |
+| R08 | F02,F09,F13 | CI su tutti i target d'integrazione approvati; profili pilot/standard espliciti e distinti, nessuna dipendenza dal nome del branch storico; mantenere LAN disattivata nelle build standard | verificare trigger su branch consolidato, configurazione Expo, build di entrambi i profili se runner gratuito, installazione fisica separata |
+
+R01 richiede inoltre test di storage concorrente con due istanze e processo distinto. Ripetere tutti i casi su Node 24 e candidato consolidato. Nessuna promozione della CI storica a CI corrente. Per RV-01 includere queste evidenze e i nuovi criteri; prima della review non eseguire F02 implementativo. Nessuna disponibilità effettiva di agente esterno verificata in questa sessione.
