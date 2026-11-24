@@ -1,0 +1,39 @@
+name: Gemini CLI Assistant
+
+on:
+  issue_comment:
+    types: [created]
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  gemini-assistant:
+    if: |
+      github.event.sender.login == github.repository_owner &&
+      (
+        (github.event.event_name == 'issues' && contains(github.event.issue.body, '@gemini-cli')) ||
+        (github.event.event_name == 'issue_comment' && contains(github.event.comment.body, '@gemini-cli'))
+      )
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gemini CLI
+        uses: google-github-actions/run-gemini-cli@v0
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          prompt: |
+            Leggi prima il file AGENTS.md e GEMINI.md nella root del repository ${{ github.repository }}.
+            Analizza la Issue o Pull Request corrente ed esegui il task assegnato a @gemini-cli.
+            Rispetta il formato di handoff definito in AGENTS.md quando commenti il risultato.
