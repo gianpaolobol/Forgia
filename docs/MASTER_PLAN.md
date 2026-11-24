@@ -1,4 +1,4 @@
-# Forgia V1.0 — piano maestro v0.3
+# Forgia V1.0 — piano maestro v0.4
 Data: 2026-11-24. Stato: proposta, NON approvata da revisore indipendente. Revisore logico previsto: RV-01; identità/modello/sessione da registrare all'assegnazione. Non equiparare questo autore a un secondo agente. La presente baseline deve essere revisionata prima dell'implementazione applicativa.
 
 ## Inventario verificato su GitHub
@@ -72,3 +72,9 @@ Evidenze e riproduzione: [audit iterazione 3](evidence/2026-11-24-iteration-03.m
 | R08 | F02,F09,F13 | CI su tutti i target d'integrazione approvati; profili pilot/standard espliciti e distinti, nessuna dipendenza dal nome del branch storico; mantenere LAN disattivata nelle build standard | verificare trigger su branch consolidato, configurazione Expo, build di entrambi i profili se runner gratuito, installazione fisica separata |
 
 R01 richiede inoltre test di storage concorrente con due istanze e processo distinto. Ripetere tutti i casi su Node 24 e candidato consolidato. Nessuna promozione della CI storica a CI corrente. Per RV-01 includere queste evidenze e i nuovi criteri; prima della review non eseguire F02 implementativo. Nessuna disponibilità effettiva di agente esterno verificata in questa sessione.
+
+## Addendum v0.4 — coda multiprocesso e sospensione quota (24 novembre 2026)
+Stato: proposta, gate RV-01 ancora aperto. Baseline main f8e64a98, stack #4 fed1b414, #5 502880bc, #6 iniziale a0669cd8. Confronto GitHub: nessuna sovrapposizione di percorsi tra delta #4/#5/#6 rispetto a main; rimane README tra main e stack storico. Non prova compatibilità funzionale. [Evidenze iterazione 4](evidence/2026-11-24-iteration-04.md).
+- R01 ora riprodotto anche con due processi OS: lo stesso job viene eseguito due volte. Claim unico, lease, fencing e test di crash sono P0 prima di attivare qualsiasi worker concorrente.
+- R09 (F04/F05/F07): 429 sintetico diventa failed anziché sospeso/riprendibile. Formalizzare suspended con nextEligibleAt, Retry-After validato, checkpoint, retry limitati e quota/consenso rivalutati. Ripresa senza duplicare effetti incerti; mai bypass quote. Test 429, riavvio, revoca e quota ancora esaurita.
+- Controllo positivo: esito terminale preservato al riavvio senza callback. Tre casi ripetuti tre volte, 1/3 pass per esecuzione, su due blob verificati e runner sintetico; Node 22, non CI completa. Mantenere come regressioni da rieseguire su Node 24 dopo F02 e F05. Nessun cambiamento applicativo.
