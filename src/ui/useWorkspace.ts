@@ -1,28 +1,180 @@
-import {useState,useEffect,useMemo} from 'react';import {Platform} from 'react-native';import AsyncStorage from '@react-native-async-storage/async-storage';
-import {validateSpec,parseItems,formatItems,EXAMPLE_ITEMS,type Project,type AppKind} from '../core/spec';import {createRepository} from '../core/storage';import {newProject,reviseProject,restoreRevision} from '../core/revisions';import {generateProject,type SourceBundle} from '../core/generator';import {exportBundle} from './export';import {createMutationGate} from '../core/mutations';import {planningInput,prepareProposal} from '../core/planning';
-export type Page='home'|'new'|'detail'|'engines'|'access'|'method';
-export const families=[['catalog','Catalogo offline','Contenuti, ricerca e preferiti'],['tracker','Gestionale','Login e dati personali · in sviluppo'],['community','Gruppi ed eventi','Ruoli e inviti · in sviluppo']] as const;
-const API='http://127.0.0.1:8787';
-export function useWorkspace(){
- const [page,setPage]=useState<Page>('home'),[projects,setProjects]=useState<Project[]>([]),[current,setCurrent]=useState<string|null>(null),[ready,setReady]=useState(false),[error,setError]=useState(''),[busy,setBusy]=useState(false),[recovered,setRecovered]=useState(false);
- const [name,setName]=useState(''),[idea,setIdea]=useState(''),[kind,setKind]=useState<AppKind>('catalog'),[items,setItems]=useState(''),[quiz,setQuiz]=useState(false),[note,setNote]=useState(''),[editing,setEditing]=useState(false),[bundle,setBundle]=useState<SourceBundle|null>(null);
- const [providers,setProviders]=useState<{id:string;model:string;configured:boolean}[]>([]),[selected,setSelected]=useState('local'),[consent,setConsent]=useState(false),[engineNote,setEngineNote]=useState('Nessun motore AI collegato');
- const gate=useMemo(()=>createMutationGate(),[]);const [proposal,setProposal]=useState<ReturnType<typeof prepareProposal>|null>(null);const repo=useMemo(()=>createRepository(AsyncStorage),[]),project=projects.find(p=>p.id===current);
- useEffect(()=>{repo.load().then(r=>{setProjects(r.projects);setRecovered(r.recovered);setReady(true);}).catch(e=>setError(e.message));},[repo]);
- function go(next:Page){setPage(next);setError('');setBundle(null);setProposal(null);}
- function start(){setName('');setIdea('');setKind('catalog');setItems('');setQuiz(false);setNote('');setEditing(false);go('new');}
- async function save(){try{await gate.run(async()=>{setBusy(true);setError('');try{const spec=validateSpec({name,idea,kind,quiz,items:parseItems(items)});const p=editing&&project?reviseProject(project,note,spec):newProject(`p${Date.now().toString(36)}${Math.random().toString(36).slice(2,7)}`,spec);const next=editing?projects.map(v=>v.id===p.id?p:v):[p,...projects];await repo.save(next);setProjects(next);setCurrent(p.id);setEditing(false);go('detail');}finally{setBusy(false);}});}catch(e){setError(message(e));}}
+import {useEffect, useMemo, useRef, useState} from 'react';
+import {Platform} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {createRepository} from '../core/storage';
+import {text, validateSpec} from '../core/spec';
+import {decodeConversations, fromProject, requestedAccess, type Conversation} from '../core/conversation';
+import {generateProject} from '../core/generator';
+import {exportBundle} from './export';
 
- function edit(){if(!project)return;setName(project.spec.name);setIdea(project.spec.idea);setKind(project.spec.kind);setQuiz(project.spec.quiz);setItems(formatItems(project.spec.items));setNote('');setEditing(true);go('new');}
- async function restore(id:string){if(!project)return;try{await gate.run(async()=>{setBusy(true);try{const p=restoreRevision(project,id),next=projects.map(v=>v.id===p.id?p:v);await repo.save(next);setProjects(next);setBundle(null);}finally{setBusy(false);}});}catch(e){setError(message(e));}}
+export type Page = 'home' | 'new' | 'detail' | 'engines' | 'access' | 'method';
+const API = 'http://127.0.0.1:8787';
+const STORAGE_KEY = 'forgia.conversations.v1';
+const id = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+const errorText = (error: unknown) => error instanceof Error ? error.message : 'Operazione non riuscita.';
 
- function open(id:string){setCurrent(id);go('detail');}
- function generate(){if(project)try{setBundle(generateProject(project.spec));}catch(e){setError(message(e));}}
- async function download(){if(bundle)try{await exportBundle(bundle);}catch(e){setError(message(e));}}
- async function refreshEngines(){try{if(Platform.OS!=='web')throw Error('Il gateway di sviluppo si collega dal pannello web sul computer. Il collegamento remoto sicuro è una fase successiva.');const r=await fetch(API+'/providers',{signal:AbortSignal.timeout(4000)});if(!r.ok)throw Error('Gateway locale non disponibile.');const d=await r.json();setProviders(d.providers.filter((p:any)=>p.configured));setEngineNote(d.providers.some((p:any)=>p.configured)?'Gateway disponibile · modalità gratuita':'Nessun motore AI collegato');}catch(e){setProviders([]);setEngineNote('Nessun motore AI collegato');setError(message(e));}}
- async function planAI(){setBusy(true);setError('');try{if(Platform.OS!=='web')throw Error('Per il gateway di sviluppo usa il pannello web locale.');if(!providers.some(p=>p.id===selected))throw Error('Collega un motore gratuito dalla sezione Motori AI. Puoi già creare una bozza compilando i campi.');const currentDraft={name,idea,kind,quiz,items:parseItems(items)};const instruction=planningInput(currentDraft,editing?note:idea);const r=await fetch(API+'/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idea:instruction,provider:selected,cloudConsent:consent}),signal:AbortSignal.timeout(55000)});const d=await r.json();if(!r.ok)throw Error(d.error??'Generazione non riuscita.');setProposal(prepareProposal(currentDraft,d.spec));}catch(e){setError(message(e));}finally{setBusy(false);}}
- function applyProposal(){if(!proposal)return;const spec=proposal.spec;setName(spec.name);setIdea(spec.idea);setKind(spec.kind);setItems(formatItems(spec.items));setQuiz(spec.quiz);setProposal(null);}
- return {proposal,applyProposal,rejectProposal:()=>setProposal(null),page,projects,project,ready,error,busy,recovered,name,setName,idea,setIdea,kind,setKind,items,setItems,quiz,setQuiz,note,setNote,editing,bundle,providers,selected,setSelected,consent,setConsent,engineNote,go,start,save,edit,restore,open,generate,download,refreshEngines,planAI,example:()=>setItems(EXAMPLE_ITEMS)};
+export function useWorkspace() {
+  const [page, setPage] = useState<Page>('home');
+  const [projects, setProjects] = useState<Conversation[]>([]);
+  const [current, setCurrent] = useState<string>();
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [jobStatus, setJobStatus] = useState('');
+  const [error, setError] = useState('');
+  const [name, setName] = useState('');
+  const [idea, setIdea] = useState('');
+  const [note, setNote] = useState('');
+  const [providers, setProviders] = useState<{id: string; model: string; configured: boolean}[]>([]);
+  const [selected, setSelected] = useState('auto');
+  const [consent, setConsent] = useState(false);
+  const [engineNote, setEngineNote] = useState('Nessun motore AI collegato');
+  const session = useRef<string | undefined>(undefined);
+  const locked = useRef(false);
+  const saved = useRef<Conversation[]>([]);
+  const project = projects.find(row => row.id === current);
+  const access = useMemo(() => requestedAccess(projects), [projects]);
+
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      try {
+        const stored = await AsyncStorage.getItem(STORAGE_KEY);
+        const rows = stored !== null ? decodeConversations(stored)
+          : (await createRepository(AsyncStorage).load()).projects.map(fromProject);
+        if (active) {
+          saved.current = rows;
+          setProjects(rows);
+          setReady(true);
+        }
+      } catch (cause) {
+        if (active) setError(errorText(cause));
+      }
+    }
+    void load();
+    return () => { active = false; };
+  }, []);
+
+  function go(next: Page) { setError(''); setPage(next); }
+  function start() { setName(''); setIdea(''); go('new'); }
+  function open(projectId: string) { setCurrent(projectId); setNote(''); go('detail'); }
+
+  async function persist(row: Conversation) {
+    const next = [row, ...saved.current.filter(item => item.id !== row.id)];
+    const encoded = JSON.stringify(next);
+    decodeConversations(encoded);
+    await AsyncStorage.setItem(STORAGE_KEY, encoded);
+    saved.current = next;
+    setProjects(next);
+  }
+
+  async function readProviders() {
+    if (Platform.OS !== 'web') throw Error('Su questo dispositivo il motore AI non è collegato. La conversazione resta salvata.');
+    const response = await fetch(API + '/providers', {signal: AbortSignal.timeout(4000)});
+    if (!response.ok) throw Error('Gateway AI locale non raggiungibile.');
+    const data = await response.json();
+    const available: typeof providers = data.providers.filter((item: typeof providers[number]) => item.configured);
+    setProviders(available);
+    setEngineNote(available.length ? 'Gateway locale collegato' : 'Nessun motore AI collegato');
+    return available;
+  }
+
+  async function refreshEngines() {
+    setError('');
+    try { await readProviders(); }
+    catch (cause) { setProviders([]); setError(errorText(cause)); }
+  }
+
+  async function askAI(row: Conversation) {
+    if (Platform.OS !== 'web') return;
+    setJobStatus('Collegamento al motore AI…');
+    const available = await readProviders();
+    if (!available.some(item => selected === 'auto' || item.id === selected)) {
+      throw Error('Collega un motore nella sezione Motori AI e riprova dalla chat.');
+    }
+    const last = row.turns[row.turns.length - 1];
+    const history = row.turns.slice(-4, -1).map(turn => ({role: turn.role, text: turn.text.slice(0, 350)}));
+    const currentSpec = row.spec && {kind: row.spec.kind, idea: row.spec.idea.slice(0, 500),
+      quiz: row.spec.quiz, items: row.spec.items.slice(0, 8)};
+    const prompt = JSON.stringify({name: row.name, instruction: last.text, recent: history,
+      current: currentSpec,
+      request: 'Prepara la prossima specifica. Una sola scheda per nome. Conserva i dati esistenti e aggiungi solo le schede richieste.'});
+    const boundedPrompt = prompt.length <= 8000 ? prompt : JSON.stringify({
+      name: row.name, instruction: last.text, current: currentSpec && {kind: currentSpec.kind, idea: currentSpec.idea},
+    });
+    if (boundedPrompt.length > 8000) throw Error('Il messaggio è troppo lungo per il motore. Dividilo in più messaggi.');
+    session.current ||= globalThis.crypto.randomUUID();
+    const response = await fetch(API + '/jobs', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({session: session.current, idea: boundedPrompt, provider: selected,
+        cloudConsent: consent, kind: row.spec?.kind, phase: row.spec ? 'revision' : 'draft'}),
+      signal: AbortSignal.timeout(8000),
+    });
+    const receipt = await response.json();
+    if (!response.ok) throw Error(receipt.error ?? 'Richiesta AI non riuscita.');
+    const deadline = Date.now() + 300000;
+    while (Date.now() < deadline) {
+      const status = await fetch(API + '/jobs/' + encodeURIComponent(receipt.id), {signal: AbortSignal.timeout(8000)});
+      const job = await status.json();
+      if (!status.ok || job.status === 'failed') throw Error(job.error ?? 'Elaborazione non riuscita.');
+      if (job.status === 'done') {
+        const proposed = validateSpec(job.result.spec);
+        const items = row.spec?.items.length
+          ? [...row.spec.items, ...proposed.items.filter(candidate => !row.spec?.items.some(
+            existing => existing.name.toLocaleLowerCase('it') === candidate.name.toLocaleLowerCase('it')))]
+          : proposed.items;
+        const spec = validateSpec({...proposed, name: row.name, items, quiz: row.spec?.quiz ?? proposed.quiz});
+        await persist({...row, spec, turns: [...row.turns, {role: 'assistant', text: spec.idea, model: job.result.routing?.model}]});
+        return;
+      }
+      setJobStatus(job.status === 'queued' ? 'Richiesta in coda…' : 'Il motore sta elaborando…');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    throw Error('L’elaborazione sta richiedendo troppo tempo. L’idea è salvata.');
+  }
+
+  async function run(action: () => Promise<void>) {
+    if (locked.current || !ready) return;
+    locked.current = true;
+    setBusy(true);
+    setError('');
+    try { await action(); }
+    catch (cause) { setError(errorText(cause)); }
+    finally { locked.current = false; setBusy(false); setJobStatus(''); }
+  }
+
+  function create() {
+    return run(async () => {
+      const row: Conversation = {id: id(), name: text(name, 'Nome', 80),
+        turns: [{role: 'user', text: text(idea, 'Idea', 4000)}]};
+      await persist(row);
+      open(row.id);
+      await askAI(row);
+    });
+  }
+
+  function send() {
+    if (!project) return;
+    return run(async () => {
+      const row: Conversation = {...project, turns: [...project.turns, {role: 'user', text: text(note, 'Messaggio', 4000)}]};
+      await persist(row);
+      setNote('');
+      await askAI(row);
+    });
+  }
+
+  function retry() {
+    if (project?.turns.at(-1)?.role === 'user') return run(() => askAI(project));
+  }
+
+  async function download() {
+    if (project?.spec?.kind !== 'catalog') return;
+    try { await exportBundle(generateProject(project.spec)); }
+    catch (cause) { setError(errorText(cause)); }
+  }
+
+  return {page, projects, project, ready, busy, jobStatus, error, name, setName, idea, setIdea, note, setNote,
+    providers, selected, setSelected, consent, setConsent, engineNote, access, go, start, open, create, send,
+    retry, download, refreshEngines, liveAI: Platform.OS === 'web'};
 }
-function message(e:unknown){return e instanceof Error?e.message:'Operazione non riuscita. Nessuna modifica confermata.';}
-export type Workspace=ReturnType<typeof useWorkspace>;
+
+export type Workspace = ReturnType<typeof useWorkspace>;
