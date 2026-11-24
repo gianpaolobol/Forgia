@@ -1,4 +1,4 @@
-# Forgia V1.0 — piano maestro v0.1
+# Forgia V1.0 — piano maestro v0.2
 Data: 2026-11-24. Stato: proposta, NON approvata da revisore indipendente. Revisore logico previsto: RV-01; identità/modello/sessione da registrare all'assegnazione. Non equiparare questo autore a un secondo agente. La presente baseline deve essere revisionata prima dell'implementazione applicativa.
 
 ## Inventario verificato su GitHub
@@ -33,3 +33,30 @@ Stato iniziale: aperto salvo inventario parziale. Ogni riga ha dipendenze, deliv
 | F13 | F09,F10,F11,F12 | CI/build firmate, test end-to-end, tre piloti assistiti, manuale e release readiness | npm suite/check/UI/export, build iOS e Android firmate e installate, regression matrix, sicurezza, zero difetti bloccanti noti, verifica costi, approvazione finale distinta | P0 |
 ## Review proposta (autocontrollo, non indipendente)
 Rilievi corretti nel piano: PR #1–4 già implementano parte della roadmap; separare consolidamento da nuovo sviluppo. Lease necessita fencing e trattamento effetti incerti; consenso non equivale a gratuità. Separare autenticazione reale da policy; sicurezza prima di remoto e tools. Non dichiarare build firmata da bundle. #6 owner-only non è fallback automatico; upstream invoca CLI in YOLO e sovrascrive GEMINI_API_KEY dall'input; prima dell'attivazione occorrono pin CLI, policy tools, verifica account e prova. Review RV-01 ancora richiesta.
+
+
+## Addendum v0.2 — consolidamento verificabile e pacchetto RV-01 (24 novembre 2026)
+Baseline per review: main f8e64a98a37d4f40177ea0bbb13006db93ee874e, stack #4 fed1b4147b8d92945cc42eca85fd58e375dee014, #5 502880bc40a67a806640f5b8ce345cbb612b08c8, policy #6 36bbd023755578bf3dc99614ff45c20b4d41212e. Tutte aperte; #1 ora riportata mergeable (non prova CI). Confronto con merge-base 8d5871a3: main ha solo LICENSE.md e 3 righe aggiunte al README; stack #4 avanti 16 commit, indietro 2, 45 file. Sovrapposizione per percorso solo README; preservare avviso copyright e LICENSE, integrare README senza promuovere prove storiche a risultati correnti.
+
+### Procedura proposta F02, dopo approvazione F00
+1. Congelare SHA e inventario; creare branch di integrazione da stack #4, portare main con merge normale (nessun force push), confrontare contenuti e preservare LICENSE/avviso copyright. Non usare merge PR #2–4 su main separatamente. Alternativa: branch da main e merge stack #4. Non alterare branch storici.
+2. Integrare #5 documentale e #6 quarantena/policy dopo controlli di compatibilità; confrontare albero finale con stack e main. Separare pilota LAN temporaneo da controllo remoto privato; niente esposizione del gateway di sviluppo.
+3. Rieseguire npm ci, npm run check, npm test, npm run export:web, npm run test:ui sul candidato consolidato; controllare che il workflow raggiunga il nuovo branch e che i job non siano skipped. Build native solo su runner gratuito verificato. Verificare artifact e digest, niente pubblicazione. Richiedere review RV-01, merge solo con autorizzazione e CI verde sullo SHA finale.
+4. Tracciare tutte le PR precedenti nel nuovo candidato senza chiuderle prima del consolidamento verificato. Non considerare mergeable o CI storica sufficiente per il merge.
+
+### Evidenza CI storica verificata, non nuova esecuzione
+- #1: https://github.com/gianpaolobol/Forgia/actions/runs/43137411915 — tre job success (web, android, ios-simulator).
+- #4: https://github.com/gianpaolobol/Forgia/actions/runs/43236598763 — tre job success, log del 12 novembre: Node 51 test/51 pass/0 fail, TypeScript nel medesimo step riuscito, Playwright 3 pass. Quattro artifact elencati non scaduti al controllo: APK ARM64 debug-signed, AAB senza firma, ZIP simulatore iOS, xcarchive iPhone senza firma. Non scaricati né installati in questa iterazione. Nessuna CI di #6 riportata.
+
+### Rilievi di lettura statica e nuovi casi obbligatori
+| ID | Rilievo sullo SHA #4 | Caso di accettazione / gate |
+|---|---|---|
+| R01 | server/jobs.ts serializza soltanto dentro un processo; disk.ts rename non è lock tra processi | F05: due processi concorrenti, claim unico, fencing e crash recovery; transazione su quota e claim |
+| R02 | tests/pilot.test.ts accetta la stessa chiave con idea, provider e consenso cambiati; jobs.ts non memorizza fingerprint terminale | F05: definire idempotenza immutabile; retry identico restituisce stesso ID; payload/consenso mutato con stessa chiave deve essere rifiutato (409) o nuova chiave; test dopo riavvio e retention |
+| R03 | server/main.ts verifica credenziale alla richiesta HTTP, ma worker di jobs.ts non ricontrolla revoca/scadenza prima di run | F08/F09: revocare utente mentre job queued e dimostrare che non parte; per running definire annullamento e blocco effetti futuri, audit senza segreti |
+| R04 | server/main.ts legge host HTTPS pilot da env e lo usa direttamente in listen; kit PowerShell restringe IPv4 privata ma server non impone lo stesso vincolo | F08/F09: rifiutare wildcard e interfacce pubbliche, servizio remoto separato e ACL; verificare 8787 loopback anche con configurazione errata |
+| R05 | server/providers.ts e routing.ts hanno ID e profili hardcoded; local mode dedotto da ID, non prova effettiva del runtime | F03/F04: registry validato, runtime locale verificato senza cloud, autorizzazioni esplicite, aggiunta provider senza patch al router |
+| R06 | storico CI non prova installazione fisica, provider free reale o merge candidate | F11/F13: build firmata e installata con evidenze, prove gratuite reali, ripetizione suite su SHA finale |
+
+### Richiesta di review RV-01
+Revisore esterno: verificare copertura requisiti F00–F13, procedura F02 (incluso copyright), casi R01–R06, sicurezza F01/F08/F09, dipendenze e criteri misurabili. Registrare identità/modello/sessione, SHA del piano e decisione APPROVED oppure CHANGES_REQUESTED con rilievi e criteri. Conservare stessa identità logica e baseline per review dei deliverable; non sostituire una review indipendente con autocontrollo. Se non disponibile, eseguire inventario e preparazione evidenze, non avviare implementazioni applicative. Stato v0.2: proposta, gate non soddisfatto.
