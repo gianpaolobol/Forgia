@@ -180,3 +180,24 @@ Esiti v0.23: P1–P6 PASS, G1–G7 PASS, C4 PASS in harness Node22 con SQLite re
 Base #31 e8495b75, issue #32, RV-01 pendente. Registro a startup per adapter già approvati, più profili dichiarativi e un solo attivo per dominio quota. M1 compatibilità legacy e identità, M2 selezione e fit, M3 configurazione malformata e duplicati fail-closed, M4 policy modello anche inattivo e divieto di endpoint/credenziali/quota in profili, M5 cambio modello conserva dominio e credenziali, M6 integrazione adapter/gateway e quota effettiva al cambio modello, M7 HTTP main e UI. Nessun nuovo runtime/endpoint, nessuna attivazione cloud SQLite o pubblicazione. Non dichiarare registro universale completo: adapter nuovi richiedono contratto, storage, autorizzazione e test; nodi remoti e handoff restano separati.
 
 Esiti v0.24: M1–M5 e M5b PASS (6/6, Node22, SQLite reale per cambio profilo e riapertura). M6 adapter/gateway e M7 HTTP/UI non eseguiti. Controlli startup/fit e collegamento a main implementati ma non collaudati integralmente. RV-01 e CI pendenti.
+
+
+## Addendum v0.25 — F06/F07, coordinatore durevole Superhandy (25 novembre 2026)
+Base #33 f587fe09, issue #34, piano registrato prima delle modifiche, RV-01 pendente. Verticale CLI locale: baseline immutabile e SHA-256, DAG di task e criteri, ruoli dichiarati, gate review piano, claim transazionale, fencing, heartbeat, marker dispatch, checkpoint/handoff massimo due prima di dispatch, quarantena degli esiti incerti, revisore del piano unico per gli esiti, dipendenze sbloccate soltanto da accettazione. Il prodotto richiede review della baseline prima del dispatch; la modalità C consente lo sviluppo reversibile del candidato, non la falsificazione delle approvazioni del prodotto. Non collegare HTTP, provider o shell. Il CLI è un coordinatore locale per operatore fidato, non autentica gli attori, non prova le loro competenze/indipendenza né esegue i task.
+
+| Test | Accettazione | Esito autocontrollo |
+|---|---|---|
+| H1 | DAG aciclico e baseline non sovrascrivibile | PASS |
+| H2 | gate e digest esatto, separazione ID reviewer | PASS |
+| H3 | claim unico tra connessioni, fencing, checkpoint | PASS |
+| H4 | massimo due handoff pre-dispatch | PASS |
+| H5 | scadenza dopo dispatch => uncertain, nessun replay | PASS |
+| H6 | stesso revisore, esito legato a hash, rifiuto riapre, dipendenza aspetta | PASS |
+| H7 | CLI e persistenza tra processi, init esclusivo | PASS |
+| H8 | heartbeat estende lease ma non riattiva lease scaduto | PASS |
+| H9 | due processi OS contendono un task, un solo claim | PASS |
+| H10 | identità e autorizzazioni vere, revoca, disponibilità, adapter e quote | PENDENTE |
+| H11 | sostituzione revisore con nuova baseline, evidenze verificate, collaudo/validatore finale | PENDENTE |
+| H12 | integrazione portfolio/gateway/UI, ACL Windows, Node24 e CI | PENDENTE |
+
+Stato: 9/9 in harness Node22 SQLite reale, typecheck isolato; non F06/F07 completati. Registro eventi non è una prova crittografica antimanomissione, gli hash degli artefatti sono dichiarati dall'operatore e non verificati dal ledger. Nessuna approvazione RV-01, nessun provider reale. 

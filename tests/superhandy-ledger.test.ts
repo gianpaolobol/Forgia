@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,mkdirSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {spawnSync} from 'node:child_process';
+import {spawnSync,execFile} from 'node:child_process';
+import {promisify} from 'node:util';
 import {openSuperhandyLedger,validateBaseline} from '../server/superhandyLedger.ts';
 const plan={project:'demo',planner:'planner',reviewer:'reviewer',executors:['one','two'],tasks:[{id:'a',depends:[],criterion:'test A'},{id:'b',depends:['a'],criterion:'test B'}]};
 const hash='a'.repeat(64),other='b'.repeat(64);
 function fixture(t:TestContext){
  const dir=mkdtempSync(join(tmpdir(),'forgia-sh-')),path=join(dir,'x.sqlite');let now=100;
- t.after(()=>rmSync(dir,{recursive:true,force:true}));
- const db=openSuperhandyLedger(path,true,()=>now);t.after(()=>db.close());
+ const db=openSuperhandyLedger(path,true,()=>now);t.after(()=>{db.close();rmSync(dir,{recursive:true,force:true});});
  const sha=db.install(plan);return {db,sha,path,advance:()=>{now+=100000;},reopen:()=>openSuperhandyLedger(path,false,()=>now)};
 }
 test('H1 invalid DAG and immutable baseline',t=>{
@@ -41,4 +41,11 @@ test('H7 local CLI creates private archive and reads across processes',t=>{
 });
 test('H8 heartbeat extends an active lease but cannot revive an expired fence',t=>{
  const {db,sha,advance}=fixture(t);db.approve('reviewer',sha,hash);const lease=db.claim('one')!.lease;db.heartbeat(lease,200000);advance();db.dispatch(lease);advance();assert.throws(()=>db.heartbeat(lease));assert.equal(db.inspect().tasks[0].status,'uncertain');
+});
+test('H9 two real competing CLI processes obtain exactly one claim',async t=>{
+ const dir=mkdtempSync(join(tmpdir(),'forgia-sh-race-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));const root=join(dir,'data');mkdirSync(root,{mode:0o700});const p=join(dir,'plan.json');writeFileSync(p,JSON.stringify(plan));
+ const run=(...args:string[])=>promisify(execFile)(process.execPath,['--experimental-strip-types','scripts/superhandy.ts',...args],{encoding:'utf8',env:{...process.env,FORGIA_DATA_DIR:root}});
+ const sha=JSON.parse((await run('init','demo',p)).stdout);await run('approve','demo','reviewer',sha,hash);
+ const outcomes=(await Promise.all([run('claim','demo','one'),run('claim','demo','two')])).map(r=>JSON.parse(r.stdout));assert.equal(outcomes.filter(v=>v!==null).length,1);assert.equal(outcomes.find(v=>v!==null).task.id,'a');
+ const state=JSON.parse((await run('inspect','demo')).stdout);assert.equal(state.events.filter((e:{action:string})=>e.action==='claim').length,1);
 });
