@@ -9,3 +9,16 @@ export function lanPilotOrigin(value: string): string | undefined {
   if (port && Number(port) > 65535) return;
   return `https://${address}${port ? ':' + port : ''}`;
 }
+
+/** A configured URL alone never enables a native pilot. Web stays on loopback. */
+export function pilotConnection(platform: string, iosFlag: string | undefined,
+  androidFlag: string | undefined, configured: string | undefined, editable?: string) {
+  const iosLanPilot = platform === 'ios' && iosFlag === '1';
+  const androidLanPilot = platform === 'android' && androidFlag === '1';
+  const nativePilot = iosLanPilot || androidLanPilot;
+  const initialAddress = nativePilot ? lanPilotOrigin(configured ?? '') : undefined;
+  const api = platform === 'web' ? 'http://127.0.0.1:8787'
+    : iosLanPilot ? lanPilotOrigin(editable ?? initialAddress ?? '')
+    : androidLanPilot ? initialAddress : undefined;
+  return {iosLanPilot, nativePilot, initialAddress, api};
+}
