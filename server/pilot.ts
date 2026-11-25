@@ -34,12 +34,20 @@ export function validatePilotAccounts(entries: unknown): Account[] {
   return accounts;
 }
 
-export function pilotIdentity(authorization: string | undefined, entries: unknown, now = Date.now()) {
+function grantFingerprint(entry: Account) {
+  return createHash('sha256').update(JSON.stringify([entry.id, entry.sha256, entry.expiresAt])).digest('hex');
+}
+
+export function pilotGrantActive(session: string, grant: string, entries: unknown, now = Date.now()) {
+  return validatePilotAccounts(entries).some(entry => entry.id === session && entry.expiresAt > now && grantFingerprint(entry) === grant);
+}
+
+export function pilotGrant(authorization: string | undefined, entries: unknown, now = Date.now()) {
   const token = /^Bearer ([a-f0-9]{64})$/.exec(authorization ?? '')?.[1];
   if (!token) return;
   const accounts = validatePilotAccounts(entries);
   const digest = createHash('sha256').update(token).digest();
   for (const entry of accounts) {
-    if (entry.expiresAt > now && timingSafeEqual(digest, Buffer.from(entry.sha256, 'hex'))) return entry.id;
+    if (entry.expiresAt > now && timingSafeEqual(digest, Buffer.from(entry.sha256, 'hex'))) return {session: entry.id, grant: grantFingerprint(entry)};
   }
 }
