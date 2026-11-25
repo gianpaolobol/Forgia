@@ -3,7 +3,8 @@ import {createServer as createHttpsServer} from 'node:https';
 import {readFile} from 'node:fs/promises';
 import {pilotGrant, pilotGrantActive, pilotBindHost, validatePilotAccounts} from './pilot.ts';
 import {resolve} from 'node:path';
-import {createProvider} from './providers.ts';
+import {createProvider,localProvider} from './providers.ts';
+import {resolveModelRegistry} from './modelRegistry.ts';
 import {createGateway} from './gateway.ts';
 import {parseFit} from './routing.ts';
 import {diskStorage} from './disk.ts';
@@ -13,6 +14,13 @@ import {createDurableLocalJobs, prepareLocalLedger} from './durableJobs.ts';
 import {existsSync} from 'node:fs';
 import {prepareCloudState} from './cloudState.ts';
 import {knownRoutingStatus} from './routingFailure.ts';
+const configs = resolveModelRegistry([
+ {id: 'local', prefix: 'OLLAMA', model: process.env.OLLAMA_MODEL ?? ''},
+ {id: 'llamacpp', prefix: 'LLAMACPP', model: process.env.LLAMACPP_MODEL ?? ''},
+ {id: 'cloudflare', prefix: 'CLOUDFLARE', model: process.env.CLOUDFLARE_MODEL ?? '', accountId: process.env.CLOUDFLARE_ACCOUNT_ID, apiKey: process.env.CLOUDFLARE_API_TOKEN, freePlanConfirmed: process.env.CLOUDFLARE_FREE_PLAN_CONFIRMED === 'true'},
+ {id: 'groq', prefix: 'GROQ', model: process.env.GROQ_MODEL ?? '', apiKey: process.env.GROQ_API_KEY, freePlanConfirmed: process.env.GROQ_FREE_PLAN_CONFIRMED === 'true'},
+ {id: 'openrouter', prefix: 'OPENROUTER', model: process.env.OPENROUTER_MODEL ?? '', apiKey: process.env.OPENROUTER_API_KEY},
+],process.env.FORGIA_MODEL_REGISTRY);
 const dataDirectory = resolve(process.env.FORGIA_DATA_DIR || '.data');
 const sqliteLocal = process.env.FORGIA_SQLITE_LOCAL === '1';
 const sqliteInitialize = process.env.FORGIA_SQLITE_INITIALIZE === '1';
@@ -32,19 +40,12 @@ const localLedger = sqliteLocal ? prepareLocalLedger(sqliteDirectory,await stora
 const cloudState = sqliteCloudState ? prepareCloudState(sqliteDirectory,sqliteCloudInitialize,
   sqliteCloudInitialize ? await storage.getItem('gateway.v1') : null) : undefined;
 const gateway = createGateway(storage,{...cloudState,localCooldownLedger:localLedger});
-const configs = [
- {id: 'local', prefix: 'OLLAMA', model: process.env.OLLAMA_MODEL ?? ''},
- {id: 'llamacpp', prefix: 'LLAMACPP', model: process.env.LLAMACPP_MODEL ?? ''},
- {id: 'cloudflare', prefix: 'CLOUDFLARE', model: process.env.CLOUDFLARE_MODEL ?? '', accountId: process.env.CLOUDFLARE_ACCOUNT_ID, apiKey: process.env.CLOUDFLARE_API_TOKEN, freePlanConfirmed: process.env.CLOUDFLARE_FREE_PLAN_CONFIRMED === 'true'},
- {id: 'groq', prefix: 'GROQ', model: process.env.GROQ_MODEL ?? '', apiKey: process.env.GROQ_API_KEY, freePlanConfirmed: process.env.GROQ_FREE_PLAN_CONFIRMED === 'true'},
- {id: 'openrouter', prefix: 'OPENROUTER', model: process.env.OPENROUTER_MODEL ?? '', apiKey: process.env.OPENROUTER_API_KEY},
-];
 function configuredProvider(config: typeof configs[number]) {
- return createProvider({...config, fit: parseFit(process.env[config.prefix + '_FIT'])});
+ return createProvider({...config, fit: parseFit(config.fitRaw ?? process.env[config.prefix + '_FIT'])});
 }
 async function executePlan({idea, provider, consent, context}: import('./durableWorker.ts').DurableInput, backlog: number, session: string, isolated: boolean, signal?: AbortSignal) {
   const scope = isolated ? session : undefined;
-  const available = sqliteLocal ? configs.filter(c => c.id==='local'||c.id==='llamacpp') : configs;
+  const available = sqliteLocal ? configs.filter(c => localProvider(c.id)) : configs;
   if (provider === 'auto') {
    const providers = available.flatMap(config => {
     try { return [configuredProvider(config)]; } catch { return []; }
@@ -80,11 +81,11 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
   if(req.method==='GET'&&req.url==='/providers'){
    const providers = configs.map(config => {
     try {
-     if (sqliteLocal && config.id!=='local' && config.id!=='llamacpp') throw Error('Cloud disattivato nel pilota SQLite.');
+     if (sqliteLocal && !localProvider(config.id)) throw Error('Cloud disattivato nel pilota SQLite.');
      configuredProvider(config);
-     return {id: config.id, model: config.model, configured: true};
+     return {id: config.id, model: config.model, profile: config.profile, configured: true};
     } catch {
-     return {id: config.id, model: config.model, configured: false};
+     return {id: config.id, model: config.model, profile: config.profile, configured: false};
     }
    });
    res.end(JSON.stringify({mode:'free-only',providers,localDevelopmentOnly:session === undefined}));return;

@@ -4,8 +4,9 @@ import {ProviderError, QuotaDeferral, retryDeadline} from './quotaDeferral.ts';
 export {ProviderError} from './quotaDeferral.ts';
 
 export interface Provider {fit?: ReturnType<typeof parseFit>;id:string;model:string;mode:'local'|'free'|'paid';eligible(signal?: AbortSignal):Promise<boolean>;complete(prompt:string,signal:AbortSignal):Promise<string>}
-export const localProvider = (id: string) => id === "local" || id === "llamacpp";
-export const providerIds = ["local", "llamacpp", "groq", "openrouter", "cloudflare"];
+import {localProvider, providerIds as registryProviderIds} from './modelRegistry.ts';
+export {localProvider};
+export const providerIds: readonly string[] = registryProviderIds;
 interface Config {accountId?:string;fit?: ReturnType<typeof parseFit>;id:string;model:string;apiKey?:string;freePlanConfirmed?:boolean}
 type Transport=(url:string,init?:RequestInit)=>Promise<Response>;
 const SYSTEM = [
