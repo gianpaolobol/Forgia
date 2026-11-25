@@ -1,3 +1,4 @@
+import {OpenRouterHttpError, openRouterCatalog} from './openRouterCatalog.ts';
 import type {parseFit} from "./routing.ts";
 
 export interface Provider {fit?: ReturnType<typeof parseFit>;id:string;model:string;mode:'local'|'free'|'paid';eligible(signal?: AbortSignal):Promise<boolean>;complete(prompt:string,signal:AbortSignal):Promise<string>}
@@ -61,9 +62,19 @@ export function createProvider(config:Config,transport:Transport=fetch):Provider
  if(!localProvider(id)&&!apiKey)throw Error('Chiave server non configurata.');
  return {id,model,fit:config.fit,mode:localProvider(id)?'local':'free',async eligible(signal = AbortSignal.timeout(15000)){
   if(id==='openrouter'){
-   const data=await payload(await send('https://openrouter.ai/api/v1/models',{signal:AbortSignal.any([signal, AbortSignal.timeout(15000)]),redirect:'error'}));
-   const found=data.data?.find((v:any)=>v.id===model),p=found?.pricing;
-   if(!p||p.prompt===undefined||p.completion===undefined||Object.values(p).some(v=>(typeof v!=='string'&&typeof v!=='number')||(typeof v==='string'&&!v.trim())||!Number.isFinite(Number(v))||Number(v)!==0))throw new ProviderError('Prezzo gratuito non verificato: chiamata bloccata.', 403);
+   try {
+    const models = await openRouterCatalog(send, signal);
+    if (!models.some(candidate => candidate.id === model)) {
+     throw new ProviderError('Prezzo gratuito non verificato: chiamata bloccata.', 403);
+    }
+   } catch (error) {
+    if (signal.aborted) throw signal.reason;
+    if (error instanceof ProviderError) throw error;
+    const status = error instanceof OpenRouterHttpError ? error.status : 503;
+    const message = status === 429 ? 'Quota gratuita esaurita: lavoro sospeso.'
+     : 'Catalogo OpenRouter non disponibile: gratuità non verificata.';
+    throw new ProviderError(message, status);
+   }
   }return true;
  },async complete(prompt,signal){
   const ollama=id==='local', cloudflare=id==='cloudflare';
@@ -79,7 +90,12 @@ export function createProvider(config:Config,transport:Transport=fetch):Provider
    ? {model,messages,stream:false,format:'json',options:{temperature:0.1,num_predict:4000}}
    : cloudflare
      ? {messages,temperature:0.1,max_tokens:2000,stream:false}
-     : {model,messages,temperature:0.1,max_tokens:4000,response_format:id==='llamacpp' ? {type:'json_object',schema:LLAMA_SPEC_SCHEMA} : {type:'json_object'}};
+     : {model,messages,temperature:0.1,max_tokens:4000,response_format:id==='llamacpp' ? {type:'json_object',schema:LLAMA_SPEC_SCHEMA} : {type:'json_object'},
+        ...(id === 'openrouter' ? {provider: {
+         allow_fallbacks: false, require_parameters: true, data_collection: 'deny',
+         max_price: {prompt: 0, completion: 0, request: 0},
+        }} : {}),
+       };
   const response=await payload(await send(urls[id],{method:'POST',headers:{'Content-Type':'application/json',...(localProvider(id)?{}:{Authorization:`Bearer ${apiKey}`})},body:JSON.stringify(body),signal,redirect:'error'}));
   if(ollama&&response.done!==true)throw new ProviderError('Risposta locale incompleta.', 502);
   if(cloudflare&&response.success!==true)throw new ProviderError('Risposta Cloudflare non valida.', 502);

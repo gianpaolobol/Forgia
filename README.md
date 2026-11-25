@@ -99,3 +99,7 @@ Per collaudo isolato: `node scripts/test-durable-loopback.mjs` (porte 8787 e 114
 
 ### Pilota SQLite loopback — stato quota/cache (candidato, non release)
 Il ramo di integrazione prepara anche il registro quote e la cache SQLite senza abilitare i provider cloud. Solo dopo migrazione esplicita e verificata della coda locale: arrestare **tutti** i processi gateway/worker legacy, conservare backup offline dell'intera directory dati (inclusi eventuali sidecar SQLite, a processi arrestati), verificare `gateway.v1.json` presente e integro. In ambiente di collaudo, con `FORGIA_SQLITE_LOCAL=1` già operativo e senza `FORGIA_SQLITE_INITIALIZE`, impostare `FORGIA_SQLITE_CLOUD_STATE=1` e una sola volta `FORGIA_SQLITE_CLOUD_INITIALIZE=1`. Ai successivi avvii rimuovere il flag INITIALIZE e mantenere STATE. Snapshot assente, DB mancante/corrotto o bootstrap duplicato bloccano l'avvio; non cancellare né ricreare gli archivi per aggirare il blocco. Non esporre il gateway. ACL Windows, test HTTP estesi, revoca e sospensione 429 ancora da verificare: non usare con dati reali o abilitare cloud prima del collaudo e della revisione.
+
+## Master Portfolio Orchestrator
+
+[Import del piano, backlog e catalogo OpenRouter](docs/MASTER_PORTFOLIO.md).
