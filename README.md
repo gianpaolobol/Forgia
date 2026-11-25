@@ -90,3 +90,6 @@ corrente. L'eventuale passaggio al cloud richiede il consenso. Se nessun
 motore compatibile risponde, il lavoro restituisce un errore e può essere
 riprovato. I modelli propongono specifiche da approvare. L'export di
 sorgenti Expo è disponibile per i cataloghi.
+
+## Coda SQLite sperimentale (solo loopback, solo AI locali)
+Sul candidato F05-L: arrestare TUTTI i gateway e fare copia offline della directory dati. Su installazione di prova privata, avviare con `FORGIA_SQLITE_LOCAL=1 FORGIA_SQLITE_INITIALIZE=1 npm run api` (sintassi shell POSIX). Rimuovere INITIALIZE ai riavvii. Il file jobs.v1 originale rimane intatto; la modalità normale rifiuta la presenza della directory sqlite-loopback. Non cancellarla per tornare al JSON: serve riconciliazione offline dei nuovi job. Non usare su dati di produzione; nessun cloud, LAN o TLS pilota in questa modalità. Conservare DB e WAL con backup coerente; ACL Windows da verificare prima del collaudo Windows. L'esito incerto non viene ripetuto dal worker. Vedi piano e progress per test e limiti.

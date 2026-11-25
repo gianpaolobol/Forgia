@@ -8,8 +8,16 @@ import {createGateway} from './gateway.ts';
 import {parseFit} from './routing.ts';
 import {diskStorage} from './disk.ts';
 import {createJobs} from './jobs.ts';
+import {createDurableLocalJobs, prepareLocalLedger} from './durableJobs.ts';
+import {existsSync} from 'node:fs';
 import {knownRoutingStatus} from './routingFailure.ts';
 const dataDirectory = resolve(process.env.FORGIA_DATA_DIR || '.data');
+const sqliteLocal = process.env.FORGIA_SQLITE_LOCAL === '1';
+const sqliteInitialize = process.env.FORGIA_SQLITE_INITIALIZE === '1';
+if (sqliteInitialize && !sqliteLocal) throw Error('Inizializzazione SQLite richiede modalità locale esplicita.');
+if (sqliteLocal && (process.env.FORGIA_PILOT_HOST || process.env.FORGIA_DISABLE_WEB_GATEWAY === '1')) throw Error('SQLite pilota consentito solo sul gateway web loopback.');
+const sqliteDirectory = resolve(dataDirectory,'sqlite-loopback');
+if (!sqliteLocal && existsSync(sqliteDirectory)) throw Error('Archivio SQLite presente: non avviare la vecchia coda JSON. Ripristino offline necessario.');
 const storage = diskStorage(dataDirectory);
 const gateway = createGateway(storage);
 const configs = [
@@ -22,24 +30,29 @@ const configs = [
 function configuredProvider(config: typeof configs[number]) {
  return createProvider({...config, fit: parseFit(process.env[config.prefix + '_FIT'])});
 }
-function buildJobs(store: typeof storage, isolated: boolean) {
- return createJobs(store, async ({idea, provider, consent, context}, backlog, session) => {
+async function executePlan({idea, provider, consent, context}: import('./durableWorker.ts').DurableInput, backlog: number, session: string, isolated: boolean, signal?: AbortSignal) {
   const scope = isolated ? session : undefined;
+  const available = sqliteLocal ? configs.filter(c => c.id==='local'||c.id==='llamacpp') : configs;
   if (provider === 'auto') {
-   const providers = configs.flatMap(config => {
+   const providers = available.flatMap(config => {
     try { return [configuredProvider(config)]; } catch { return []; }
    });
-   return gateway.planAuto(idea, providers, consent, context, backlog, scope);
+   return gateway.planAuto(idea, providers, sqliteLocal ? false : consent, context, backlog, scope, signal);
   }
-  const config = configs.find(c => c.id === provider);
+  const config = available.find(c => c.id === provider);
   if (!config) throw Error('Motore non configurato.');
   const selected = configuredProvider(config);
-  const result = await gateway.plan(idea, selected, consent, scope);
+  const result = await gateway.plan(idea, selected, sqliteLocal ? false : consent, scope, signal);
   return {...result, routing: {provider: selected.id, model: selected.model, reason: 'Selezione manuale.', skipped: []}};
- });
 }
-
-const localJobs = buildJobs(storage, false);
+function buildJobs(store: typeof storage, isolated: boolean) {
+ return createJobs(store,(input,backlog,session)=>executePlan(input,backlog,session,isolated));
+}
+const durableJobs = sqliteLocal ? createDurableLocalJobs(
+ prepareLocalLedger(sqliteDirectory,await storage.getItem('jobs.v1') ?? '[]',sqliteInitialize),
+ (input,backlog,session,signal)=>executePlan(input,backlog,session,true,signal),
+) : undefined;
+const localJobs = durableJobs ?? buildJobs(storage, false);
 const allowed = new Set(['http://localhost:8081', 'http://127.0.0.1:8081']);
 
 function reply(res: ServerResponse, status: number, payload: unknown) {
@@ -55,6 +68,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
   if(req.method==='GET'&&req.url==='/providers'){
    const providers = configs.map(config => {
     try {
+     if (sqliteLocal && config.id!=='local' && config.id!=='llamacpp') throw Error('Cloud disattivato nel pilota SQLite.');
      configuredProvider(config);
      return {id: config.id, model: config.model, configured: true};
     } catch {
@@ -87,7 +101,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
   }
   const receipt = await jobs.submit(
    session ? {...body, session} : waitForResult ? {...body, session:'00000000-0000-0000-0000-000000000000'} : body,
-   session && typeof requestKey === 'string' ? requestKey : undefined,
+   (session || sqliteLocal) && typeof requestKey === 'string' ? requestKey : undefined,
   );
   if (!waitForResult) {
    res.writeHead(202);
@@ -105,7 +119,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
   const failure = error as {status?: number; code?: string; message?: string};
   // A provider's 401/403 is not the client's authentication failure.
   const upstreamStatus = knownRoutingStatus(failure.status) ? failure.status : undefined;
-  const status = upstreamStatus === 401 || upstreamStatus === 403 ? 502 : upstreamStatus ?? (failure.status === 413 ? 413 : 400);
+  const status = upstreamStatus === 401 || upstreamStatus === 403 ? 502 : upstreamStatus ?? (failure.status === 413 || failure.status === 409 ? failure.status : 400);
   const message = error instanceof SyntaxError ? 'Risposta o richiesta JSON non valida.'
    : (session && failure.code ? undefined : failure.message);
   reply(res, status, {error: message ?? 'Operazione non riuscita.', statusCode: upstreamStatus});
@@ -122,12 +136,15 @@ if (process.env.FORGIA_DISABLE_WEB_GATEWAY !== '1') createServer((req, res) => {
  res.setHeader('Vary', 'Origin');
  if (req.method === 'OPTIONS') {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Idempotency-Key');
   res.writeHead(204).end();
   return;
  }
  void handle(req, res, localJobs);
-}).listen(8787, '127.0.0.1', () => console.log('Gateway gratuito di sviluppo: http://127.0.0.1:8787.'));
+}).listen(8787, '127.0.0.1', () => {
+ durableJobs?.start();
+ console.log('Gateway gratuito di sviluppo: http://127.0.0.1:8787.');
+});
 
 if (process.env.FORGIA_PILOT_HOST) {
  const host = pilotBindHost(process.env.FORGIA_PILOT_HOST);
