@@ -60,6 +60,20 @@ try{
  const plan=await post('/plan',{...body,provider:'local'},'request-plan');assert.equal(plan.status,200);assert.deepEqual((await plan.json()).spec,spec);assert.equal(calls,2);
  assert.equal(await readFile(join(dir,'jobs.v1.json'),'utf8'),'[]');
  await stop();
+ // Prepare cloud quota/cache from the preserved local gateway snapshot.
+ const legacyBefore=await readFile(join(dir,'gateway.v1.json'),'utf8');
+ await start({FORGIA_SQLITE_CLOUD_STATE:'1',FORGIA_SQLITE_CLOUD_INITIALIZE:'1'});
+ assert.deepEqual(await wait(id),job);
+ assert.ok((await (await request('/providers')).json()).providers.filter(p=>p.id!=='local'&&p.id!=='llamacpp').every(p=>!p.configured));
+ assert.equal((await post('/jobs',{...body,provider:'groq'},'request-cloud')).status,400);
+ assert.equal(await readFile(join(dir,'gateway.v1.json'),'utf8'),legacyBefore);
+ await stop();await start({FORGIA_SQLITE_CLOUD_STATE:'1'});
+ assert.deepEqual(await wait(id),job);
+ assert.equal(calls,2);
+ await stop();
+ // Omitting the state opt-in after bootstrap must fail closed.
+ child=spawn(process.execPath,['--experimental-strip-types','server/main.ts'],{cwd:root,env,stdio:'ignore'});
+ const [missingOptIn]=await once(child,'exit');assert.notEqual(missingOptIn,0);child=undefined;
  // A normal legacy launch must refuse an existing cutover directory.
  child=spawn(process.execPath,['--experimental-strip-types','server/main.ts'],{cwd:root,env:{...env,FORGIA_SQLITE_LOCAL:'0'},stdio:'ignore'});
  const [code]=await once(child,'exit');assert.notEqual(code,0);child=undefined;
