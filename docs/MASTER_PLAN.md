@@ -159,3 +159,5 @@ Base #23 1c8b7820685eac3f5c38aea6e26faea22410ed77; mantiene portfolio e catalogo
 | S5 | regressioni gateway/ledger/worker, routing mixed failure non sospeso, CI e typecheck su Node 24 |
 
 Nessuna equivalenza fra fixture e inferenza reale, né tra autocontrollo e revisione indipendente. Restano revoca cloud/in-flight, cutover, UI ripresa e build/installazione.
+
+S4 esteso: persistere anche cooldown dei due runtime locali nel ledger condiviso, senza riduzione; un altro job dopo riavvio non deve aggirare Retry-After. Il cloud usa il registro quote dedicato. Il writer JSON legacy resta fuori dal cutover SQLite.

@@ -58,3 +58,16 @@ test('S3 stale lease cannot defer or change uncertain outcome',t=>{
   assert.equal(db.deferQuota(lease,130,60130),'lease-lost');
   assert.equal(db.read(id,session)?.status,'uncertain');
 });
+
+test('S4 provider cooldown shared across jobs and processes, survives reopen without shortening',t=>{
+  const dir=mkdtempSync(join(tmpdir(),'forgia-cooldown-'));
+  const path=join(dir,'jobs.db');const db=openJobLedger(path);
+  t.after(()=>{db.close();rmSync(dir,{recursive:true,force:true});});
+  db.recordLocalCooldown('local',220000);db.recordLocalCooldown('local',160000);
+  const second=openJobLedger(path);
+  try {assert.equal(second.localCooldownUntil('local'),220000);assert.equal(second.localCooldownUntil('llamacpp'),0);second.recordLocalCooldown('local',280000);}
+  finally {second.close();}
+  assert.equal(db.localCooldownUntil('local'),280000);
+  assert.throws(()=>db.recordLocalCooldown('groq',1));
+  assert.throws(()=>db.recordLocalCooldown('local',NaN));
+});

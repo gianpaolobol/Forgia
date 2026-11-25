@@ -85,6 +85,11 @@ try{
  await stop();await start({FORGIA_SQLITE_CLOUD_STATE:'1'});
  assert.deepEqual(await (await request('/jobs/'+suspended.id)).json(),pending);
  await delay(800);assert.equal(calls,3);
+ const otherSuspendedResponse=await post('/plan',{...body,idea:'Altro catalogo quota',provider:'local'},'request-quota-other');
+ assert.equal(otherSuspendedResponse.status,429);
+ const otherSuspended=await otherSuspendedResponse.json();
+ assert.notEqual(otherSuspended.id,suspended.id);assert.ok(otherSuspended.nextEligibleAt>=suspended.nextEligibleAt-1000);
+ assert.equal(calls,3); // persisted provider-wide cooldown blocks a different job
  await stop();
  // Omitting the state opt-in after bootstrap must fail closed.
  child=spawn(process.execPath,['--experimental-strip-types','server/main.ts'],{cwd:root,env,stdio:'ignore'});

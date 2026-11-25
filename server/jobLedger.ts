@@ -19,6 +19,10 @@ export function openJobLedger(path: string) {
       id TEXT PRIMARY KEY REFERENCES forgia_jobs_v1(id),
       next_eligible_at INTEGER NOT NULL CHECK(next_eligible_at>=0),
       attempts INTEGER NOT NULL CHECK(attempts BETWEEN 1 AND 2)
+    );
+    CREATE TABLE IF NOT EXISTS forgia_local_cooldown_v1 (
+      provider TEXT PRIMARY KEY CHECK(provider IN ('local','llamacpp')),
+      until_ms INTEGER NOT NULL CHECK(until_ms>=0)
     );`);
   const q = (sql: string) => db.prepare(sql);
   function tx<T>(fn: () => T): T {
@@ -98,6 +102,17 @@ export function openJobLedger(path: string) {
         q('INSERT INTO forgia_job_deferral_v1(id,next_eligible_at,attempts) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET next_eligible_at=excluded.next_eligible_at,attempts=excluded.attempts').run(lease.id,nextEligibleAt,attempts+1);
         return 'deferred';
       });
+    },
+    localCooldownUntil(provider: string): number {
+      if (!['local','llamacpp'].includes(provider)) throw Error('Runtime locale non valido.');
+      const row=q('SELECT until_ms FROM forgia_local_cooldown_v1 WHERE provider=?').get(provider);
+      const until=Number(row?.until_ms??0);
+      if (!Number.isSafeInteger(until) || until<0 || until>253402300799999) throw Error('Cooldown locale non valido.');
+      return until;
+    },
+    recordLocalCooldown(provider: string, until: number) {
+      if (!['local','llamacpp'].includes(provider) || !Number.isSafeInteger(until) || until<0 || until>253402300799999) throw Error('Cooldown locale non valido.');
+      q('INSERT INTO forgia_local_cooldown_v1(provider,until_ms) VALUES(?,?) ON CONFLICT(provider) DO UPDATE SET until_ms=max(until_ms,excluded.until_ms)').run(provider,until);
     },
     deferredUntil(id: string): number | undefined {
       const row=q("SELECT d.next_eligible_at AS deadline FROM forgia_job_deferral_v1 d JOIN forgia_jobs_v1 j ON j.id=d.id WHERE j.id=? AND j.status='queued'").get(id);

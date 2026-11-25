@@ -5,14 +5,16 @@ import {ProviderError, localProvider, providerIds, type Provider} from './provid
 import {rankProviders, type RoutingContext} from './routing.ts';
 import {normalizeRoutingStatus, summarizeRoutingFailure, type RoutingFailureStatus} from './routingFailure.ts';
 import type {openQuotaLedger} from './quotaLedger.ts';
+import type {openJobLedger} from './jobLedger.ts';
 import {QuotaDeferral, nextUtcDay, retryDeadline} from './quotaDeferral.ts';
 import {cloudCacheKey, type openCloudCache} from './cloudCache.ts';
 type QuotaLedger = ReturnType<typeof openQuotaLedger>;
 type CloudCache = ReturnType<typeof openCloudCache>;
+type LocalCooldownLedger = Pick<ReturnType<typeof openJobLedger>,'localCooldownUntil'|'recordLocalCooldown'>;
 type SpecCache = Record<string, AppSpec>;
 interface State {version:1;day:string;counts:Record<string,number>;cache:SpecCache;pilotCache:SpecCache}
 const queues=new WeakMap<Storage,Promise<unknown>>();
-export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache}:{dailyLimit?:number;quotaLedger?:QuotaLedger;cloudCache?:CloudCache}={}){
+export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache,localCooldownLedger}:{dailyLimit?:number;quotaLedger?:QuotaLedger;cloudCache?:CloudCache;localCooldownLedger?:LocalCooldownLedger}={}){
  if(cloudCache&&!quotaLedger)throw Error('Cache cloud richiede il registro quote SQLite.');
  if(dailyLimit!==undefined&&(!Number.isSafeInteger(dailyLimit)||dailyLimit<1||dailyLimit>100))throw Error('Quota locale non valida.');
  async function load():Promise<State>{
@@ -41,6 +43,11 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache}:
 
  const limit = (provider: Provider) => dailyLimit ?? (provider.mode === 'local' ? Infinity : 20);
  const cooldowns = new Map<string, number>();
+ const cooldownUntil = (id:string) => localCooldownLedger && localProvider(id) ? localCooldownLedger.localCooldownUntil(id) : (cooldowns.get(id)??0);
+ function recordCooldown(id:string,until:number) {
+  if(localCooldownLedger&&localProvider(id)) localCooldownLedger.recordLocalCooldown(id,until);
+  else cooldowns.set(id,Math.max(cooldownUntil(id),until));
+ }
  const cloudLimit = Math.min(dailyLimit ?? 20,20);
  // Opt-in only: every cloud caller must share the initialized ledger after an offline cutover.
  // The legacy JSON cloud cache/counters are not authoritative in this mode.
@@ -86,7 +93,7 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache}:
   const used = state.counts[provider.id] ?? 0;
   const cache = scope ? state.pilotCache : state.cache;
   if (cache[key]) return {spec: validateSpec(cache[key]), cached: true, requestsUsed: used};
-  if ((cooldowns.get(provider.id) ?? 0) > Date.now()) throw new QuotaDeferral(cooldowns.get(provider.id)!);
+  if (cooldownUntil(provider.id) > Date.now()) throw new QuotaDeferral(cooldownUntil(provider.id));
   if (used >= limit(provider)) throw new QuotaDeferral(nextUtcDay());
   if (!await provider.eligible(signal)) throw new ProviderError('Fornitore gratuito non verificato.', 403);
   signal.throwIfAborted();
@@ -96,7 +103,7 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache}:
   try {
    output = await provider.complete(prompt, signal);
   } catch (error) {
-   if (error instanceof ProviderError && error.status === 429) cooldowns.set(provider.id, Math.max(cooldowns.get(provider.id)??0,retryDeadline(null),error instanceof QuotaDeferral?error.nextEligibleAt:0));
+   if (error instanceof ProviderError && error.status === 429) recordCooldown(provider.id, Math.max(retryDeadline(null),error instanceof QuotaDeferral?error.nextEligibleAt:0));
    throw error;
   }
   signal.throwIfAborted();
@@ -144,7 +151,7 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache}:
      const current=quotaLedger.read(p.id);
      return [p.id,current.cooldownUntil>Date.now()?0:cloudLimit-current.used];
     }
-    return [p.id,(cooldowns.get(p.id) ?? 0)>Date.now()?0:limit(p)-(state.counts[p.id]??0)];
+    return [p.id,cooldownUntil(p.id)>Date.now()?0:limit(p)-(state.counts[p.id]??0)];
    }));
    const reserve = backlog>=0 && context.kind==='catalog' && context.phase==='draft' && Buffer.byteLength(prompt)<=2000 ? Math.min(cloudLimit,backlog>=2?8:4) : 0;
    const ranked = rankProviders(providers, context, prompt, consent, remaining, backlog);
@@ -158,7 +165,7 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache}:
           const state=quotaLedger.read(p.id);
           return Math.max(state.cooldownUntil,state.used>=cloudLimit-reserve?nextUtcDay():retryDeadline(null));
         }
-        return Math.max(cooldowns.get(p.id)??0, (state.counts[p.id]??0)>=limit(p)-(p.mode==='free'?reserve:0)?nextUtcDay():retryDeadline(null));
+        return Math.max(cooldownUntil(p.id), (state.counts[p.id]??0)>=limit(p)-(p.mode==='free'?reserve:0)?nextUtcDay():retryDeadline(null));
       });
       throw new QuotaDeferral(Math.max(...deadlines));
     }

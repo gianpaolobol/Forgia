@@ -30,7 +30,7 @@ const localLedger = sqliteLocal ? prepareLocalLedger(sqliteDirectory,await stora
 // persistent state without enabling any external inference or pilot access.
 const cloudState = sqliteCloudState ? prepareCloudState(sqliteDirectory,sqliteCloudInitialize,
   sqliteCloudInitialize ? await storage.getItem('gateway.v1') : null) : undefined;
-const gateway = createGateway(storage,cloudState);
+const gateway = createGateway(storage,{...cloudState,localCooldownLedger:localLedger});
 const configs = [
  {id: 'local', prefix: 'OLLAMA', model: process.env.OLLAMA_MODEL ?? ''},
  {id: 'llamacpp', prefix: 'LLAMACPP', model: process.env.LLAMACPP_MODEL ?? ''},
