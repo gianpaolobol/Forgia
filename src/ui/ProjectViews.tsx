@@ -39,6 +39,9 @@ export function Detail({w}: {w: Workspace}) {
   if (!w.project) return null;
   const project = w.project;
   const access = w.access.filter(item => item.projectId === project.id);
+  const last = project.turns.at(-1);
+  const job = last?.role === 'user' ? last.job : undefined;
+  const pending = job?.state === 'submitting' || job?.state === 'accepted';
   return <>
     <View style={s.between}>
       <Text style={s.hero}>{project.name}</Text>
@@ -51,8 +54,11 @@ export function Detail({w}: {w: Workspace}) {
     </View>)}
     {!w.liveAI && <Text style={s.small}>L’AI è disponibile nel pannello web locale. I messaggi scritti qui restano su questo dispositivo.</Text>}
     {!!w.jobStatus && <Tag>{w.jobStatus}</Tag>}
-    {w.liveAI && project.turns.at(-1)?.role === 'user' && !w.busy &&
-      <Button secondary onPress={w.retry}>Riprova con l’AI</Button>}
+    {w.liveAI && last?.role === 'user' && !w.busy && (!job || job.state === 'accepted') &&
+      <Button secondary onPress={w.retry}>{job ? 'Riprendi lavoro AI' : 'Riprova con l’AI'}</Button>}
+    {job?.state === 'submitting' && <Text style={s.small}>Invio non confermato: verifica il gateway. Forgia non ripete automaticamente la richiesta.</Text>}
+    {job?.state === 'accepted' && <Text style={s.small}>Ricevuta salvata. Riprendi il lavoro sul gateway originale.</Text>}
+    {pending && !w.busy && <Button secondary onPress={w.abandonJob}>Abbandona il recupero (non annulla il lavoro)</Button>}
     {project.spec?.kind === 'catalog' && <>
       <View style={s.card}>
         <Pressable accessibilityRole="button" accessibilityState={{expanded: preview}}
@@ -72,7 +78,7 @@ export function Detail({w}: {w: Workspace}) {
         multiline maxLength={4000}/>
       <View style={s.between}>
         <Dictation value={w.note} onChange={w.setNote} maxLength={4000} disabled={w.busy}/>
-        <Button disabled={w.busy || !w.note.trim()} onPress={w.send}>Invia</Button>
+        <Button disabled={w.busy || pending || !w.note.trim()} onPress={w.send}>Invia</Button>
       </View>
     </View>
   </>;
