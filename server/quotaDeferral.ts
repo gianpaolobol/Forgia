@@ -34,3 +34,22 @@ export class QuotaDeferral extends ProviderError {
     this.nextEligibleAt = nextEligibleAt;
   }
 }
+
+/** Eligibility precedes inference reservation. Persist rate limits without
+ * converting unclassified failures into replay-safe deferrals. */
+export async function verifyEligibility(
+  eligible: (signal: AbortSignal) => Promise<boolean>, signal: AbortSignal,
+  recordCooldown: (until: number) => void,
+): Promise<void> {
+  signal.throwIfAborted();
+  try {
+    if (!await eligible(signal)) throw new ProviderError('Fornitore gratuito non verificato.', 403);
+  } catch (error) {
+    if (error instanceof ProviderError && error.status === 429) {
+      recordCooldown(Math.max(retryDeadline(null), error instanceof QuotaDeferral ? error.nextEligibleAt : 0));
+    }
+    signal.throwIfAborted();
+    throw error;
+  }
+  signal.throwIfAborted();
+}

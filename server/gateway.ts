@@ -6,7 +6,7 @@ import {rankProviders, type RoutingContext} from './routing.ts';
 import {normalizeRoutingStatus, summarizeRoutingFailure, type RoutingFailureStatus} from './routingFailure.ts';
 import type {openQuotaLedger} from './quotaLedger.ts';
 import type {openJobLedger} from './jobLedger.ts';
-import {QuotaDeferral, nextUtcDay, retryDeadline} from './quotaDeferral.ts';
+import {QuotaDeferral, nextUtcDay, retryDeadline, verifyEligibility} from './quotaDeferral.ts';
 import {cloudCacheKey, type openCloudCache} from './cloudCache.ts';
 type QuotaLedger = ReturnType<typeof openQuotaLedger>;
 type CloudCache = ReturnType<typeof openCloudCache>;
@@ -56,7 +56,7 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache,l
   if (before.cooldownUntil > Date.now() || before.used >= cloudLimit-reserve) {
    throw new QuotaDeferral(Math.max(before.cooldownUntil, before.used >= cloudLimit-reserve ? nextUtcDay() : retryDeadline(null)));
   }
-  if (!await provider.eligible(signal)) throw new ProviderError('Fornitore gratuito non verificato.',403);
+  await verifyEligibility(s => provider.eligible(s), signal, until => quotaLedger!.cooldown(provider.id,until));
   signal.throwIfAborted();
   const key=cloudCache ? cloudCacheKey(provider.id,provider.model,prompt,scope) : undefined;
   if (key) {
@@ -95,7 +95,7 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache,l
   if (cache[key]) return {spec: validateSpec(cache[key]), cached: true, requestsUsed: used};
   if (cooldownUntil(provider.id) > Date.now()) throw new QuotaDeferral(cooldownUntil(provider.id));
   if (used >= limit(provider)) throw new QuotaDeferral(nextUtcDay());
-  if (!await provider.eligible(signal)) throw new ProviderError('Fornitore gratuito non verificato.', 403);
+  await verifyEligibility(s => provider.eligible(s), signal, until => recordCooldown(provider.id,until));
   signal.throwIfAborted();
   state.counts[provider.id] = used + 1;
   await store.setItem('gateway.v1', JSON.stringify(state));

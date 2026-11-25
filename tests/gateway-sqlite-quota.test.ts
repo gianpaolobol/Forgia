@@ -103,3 +103,18 @@ test('C4 shared cloud cache keeps consent, eligibility, scope and quota gates',a
   assert.throws(()=>createGateway(storage(),{cloudCache:ca}),/registro quote/);
  }finally{ca.close();cb.close();}
 });
+
+test('P4 catalog preflight 429 persists across gateways without inference reservation',async t=>{
+ const {a,b,path}=fixture(t);let checks=0,calls=0;
+ const {QuotaDeferral}=await import('../server/quotaDeferral.ts');
+ const until=Date.now()+180000;
+ const p=cloud({id:'openrouter',async eligible(){checks++;throw new QuotaDeferral(until);},async complete(){calls++;return JSON.stringify(spec);}});
+ await assert.rejects(createGateway(storage(),{quotaLedger:a}).plan('A',p,true),e=>e instanceof QuotaDeferral&&e.nextEligibleAt===until);
+ assert.equal(b.read('openrouter').used,0);
+ assert.ok(b.read('openrouter').cooldownUntil>=until);
+ const reopened=openQuotaLedger(path);
+ try {
+  await assert.rejects(createGateway(storage(),{quotaLedger:reopened}).plan('B',p,true),status(429));
+  assert.equal(checks,1);assert.equal(calls,0);assert.equal(reopened.read('openrouter').used,0);
+ }finally{reopened.close();}
+});

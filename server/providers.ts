@@ -68,10 +68,11 @@ export function createProvider(config:Config,transport:Transport=fetch):Provider
    } catch (error) {
     if (signal.aborted) throw signal.reason;
     if (error instanceof ProviderError) throw error;
+    if (error instanceof OpenRouterHttpError && error.status === 429) {
+     throw new QuotaDeferral(retryDeadline(error.retryAfter), 'Catalogo OpenRouter temporaneamente limitato.');
+    }
     const status = error instanceof OpenRouterHttpError ? error.status : 503;
-    const message = status === 429 ? 'Quota gratuita esaurita: lavoro sospeso.'
-     : 'Catalogo OpenRouter non disponibile: gratuità non verificata.';
-    throw new ProviderError(message, status);
+    throw new ProviderError('Catalogo OpenRouter non disponibile: gratuità non verificata.', status);
    }
   }return true;
  },async complete(prompt,signal){
