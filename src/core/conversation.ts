@@ -1,4 +1,5 @@
 import {text, validateSpec, type AppSpec, type Project} from './spec.ts';
+import {decodeJobRecovery, type JobRecovery} from './jobRecovery.ts';
 
 import {createBackedRepository, createRepository, type Storage} from './storage.ts';
 
@@ -12,6 +13,7 @@ export interface Turn {
   text: string;
   model?: string;
   requestId?: string;
+  job?: JobRecovery;
 }
 
 export interface Conversation {
@@ -44,7 +46,8 @@ export function decodeConversations(value: string): Conversation[] {
       if (turn?.role !== 'user' && turn?.role !== 'assistant') throw Error('Messaggio non valido.');
       return {role: turn.role, text: text(turn.text, 'Messaggio', 4000),
         ...(turn.model === undefined ? {} : {model: text(turn.model, 'Modello', 200)}),
-        ...(turn.requestId === undefined ? {} : {requestId: text(turn.requestId, 'Identificativo del messaggio', 100)})};
+        ...(turn.requestId === undefined ? {} : {requestId: text(turn.requestId, 'Identificativo del messaggio', 100)}),
+        ...(turn.job === undefined ? {} : {job: decodeJobRecovery(turn.job)})};
     });
     return {id, name: text(row.name, 'Nome', 80), turns, ...(row.spec ? {spec: validateSpec(row.spec)} : {})};
   });

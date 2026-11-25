@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {text, validateSpec} from '../core/spec';
 import {createConversationRepository, requestedAccess, type Conversation} from '../core/conversation';
 import {lanPilotOrigin, pilotConnection} from '../core/lanPilot';
+import {closeJob, decodeJobRecovery, recoveryAction, type JobRecovery} from '../core/jobRecovery';
 import {generateProject} from '../core/generator';
 import {exportBundle} from './export';
 
@@ -47,6 +48,7 @@ export function useWorkspace() {
   const {nativePilot, iosLanPilot, api} = pilotProfile(pilotAddress);
   const [engineNote, setEngineNote] = useState('Nessun motore AI collegato');
   const session = useRef<string | undefined>(undefined);
+  const recoveredStorage = useRef(false);
   const locked = useRef(false);
   const saved = useRef<Conversation[]>([]);
   const project = projects.find(row => row.id === current);
@@ -59,6 +61,7 @@ export function useWorkspace() {
         const {projects: rows, recovered} = await conversations.load();
         if (active) {
           saved.current = rows;
+          recoveredStorage.current = recovered;
           setProjects(rows);
           setReady(true);
           if (recovered) setError('Ultimo salvataggio integro recuperato.');
@@ -116,58 +119,88 @@ export function useWorkspace() {
 
   async function askAI(row: Conversation) {
     if (!api) return;
-    setJobStatus('Collegamento al motore AI…');
-    if (!nativePilot) {
-      const available = await readProviders();
-      if (!available.some(item => selected === 'auto' || item.id === selected)) {
-        throw Error('Collega un motore nella sezione Motori AI e riprova dalla chat.');
-      }
-    }
+    const origin = api;
     const last = row.turns[row.turns.length - 1];
-    const requestId = last.requestId ?? id();
-    if (nativePilot && !last.requestId) {
-      row = {...row, turns: [...row.turns.slice(0, -1), {...last, requestId}]};
+    const action = recoveryAction(last.job, origin);
+    if (action === 'blocked') throw Error('Richiesta già avviata, chiusa o appartenente a un altro gateway. Nessun nuovo invio automatico.');
+    let jobId: string;
+    const authorization = credentials();
+
+    async function saveJob(job: JobRecovery) {
+      row = {...row, turns:[...row.turns.slice(0,-1), {...row.turns[row.turns.length-1],job}]};
       await persist(row);
     }
-    const history = row.turns.slice(-4, -1).map(turn => ({role: turn.role, text: turn.text.slice(0, 160)}));
-    const currentSpec = row.spec && {kind: row.spec.kind, quiz: row.spec.quiz, items: row.spec.items.slice(0, 8),
-      idea: row.spec.idea.slice(0, 250)};
-    const prompt = JSON.stringify({name: row.name, recent: history.length ? history : undefined,
-      current: currentSpec, instruction: last.text});
-    const boundedPrompt = prompt.length <= 8000 ? prompt : JSON.stringify({
-      name: row.name, current: currentSpec && {kind: currentSpec.kind, idea: currentSpec.idea},
-      instruction: last.text,
-    });
-    if (boundedPrompt.length > 8000) throw Error('Il messaggio è troppo lungo per il motore. Dividilo in più messaggi.');
-    if (!nativePilot) session.current ||= globalThis.crypto.randomUUID();
-    const authorization = credentials();
-    const {response, body: receipt} = await gatewayRequest(api + '/jobs', {
-      method: 'POST',
-      headers: {...authorization, 'Content-Type': 'application/json',
-        ...(nativePilot ? {'Idempotency-Key': encodeURIComponent(row.id) + ':' + requestId} : {})},
-      body: JSON.stringify({session: session.current, idea: boundedPrompt, provider: selected,
-        cloudConsent: consent, kind: row.spec?.kind, phase: row.spec ? 'revision' : 'draft'}),
-    }, 8000);
-    if (!response.ok) throw Error(receipt.error ?? 'Richiesta AI non riuscita.');
-    const deadline = Date.now() + 300000;
-    while (Date.now() < deadline) {
-      const {response: status, body: job} = await gatewayRequest(api + '/jobs/' + encodeURIComponent(receipt.id),
-        {headers: authorization}, 8000);
-      if (!status.ok || job.status === 'failed') throw Error(job.error ?? 'Elaborazione non riuscita.');
+
+    if (action === 'poll' && last.job?.state === 'accepted') {
+      jobId = last.job.id;
+    } else {
+      setJobStatus('Collegamento al motore AI…');
+      if (!nativePilot) {
+        const available = await readProviders();
+        if (!available.some(item => selected === 'auto' || item.id === selected)) {
+          throw Error('Collega un motore nella sezione Motori AI e riprova dalla chat.');
+        }
+      }
+      const requestId = last.requestId ?? id();
+      const history = row.turns.slice(-4, -1).map(turn => ({role: turn.role, text: turn.text.slice(0, 160)}));
+      const currentSpec = row.spec && {kind: row.spec.kind, quiz: row.spec.quiz, items: row.spec.items.slice(0, 8),
+        idea: row.spec.idea.slice(0, 250)};
+      const prompt = JSON.stringify({name: row.name, recent: history.length ? history : undefined,
+        current: currentSpec, instruction: last.text});
+      const boundedPrompt = prompt.length <= 8000 ? prompt : JSON.stringify({
+        name: row.name, current: currentSpec && {kind: currentSpec.kind, idea: currentSpec.idea},
+        instruction: last.text,
+      });
+      if (boundedPrompt.length > 8000) throw Error('Il messaggio è troppo lungo per il motore. Dividilo in più messaggi.');
+      if (!nativePilot) session.current ||= globalThis.crypto.randomUUID();
+      const context = {origin, ...(nativePilot ? {} : {session:session.current})};
+      const marker = decodeJobRecovery({...context,state:'submitting'});
+      row = {...row, turns:[...row.turns.slice(0,-1), {...last,requestId}]};
+      // The marker MUST be durable before dispatch. A lost receipt is ambiguous:
+      // do not repeat the POST, including against legacy queues without deduplication.
+      await saveJob(marker);
+      const {response, body: receipt} = await gatewayRequest(origin + '/jobs', {
+        method:'POST',
+        headers:{...authorization,'Content-Type':'application/json',
+          'Idempotency-Key':encodeURIComponent(row.id)+':'+requestId},
+        body:JSON.stringify({session:session.current, idea:boundedPrompt, provider:selected,
+          cloudConsent:consent, kind:row.spec?.kind, phase:row.spec?'revision':'draft'}),
+      },8000);
+      if (!response.ok) throw Error(receipt.error ?? 'Richiesta non confermata: nessun reinvio automatico.');
+      const accepted = decodeJobRecovery({...context,state:'accepted',id:receipt.id});
+      if (accepted.state !== 'accepted') throw Error('Ricevuta non valida.');
+      jobId = accepted.id;
+      await saveJob(accepted);
+    }
+
+    const deadline = Date.now()+300000;
+    while (Date.now()<deadline) {
+      const {response:status,body:job} = await gatewayRequest(origin+'/jobs/'+encodeURIComponent(jobId),
+        {headers:authorization},8000);
+      if (!status.ok) throw Error(job.error ?? 'Ricevuta non accessibile. Verifica il gateway e le autorizzazioni; nessun reinvio.');
+      if (job.status === 'failed') {
+        const marker = row.turns.at(-1)?.job;
+        if (marker) await saveJob(closeJob(marker));
+        throw Error(job.error ?? 'Elaborazione non riuscita.');
+      }
       if (job.status === 'done') {
         const proposed = validateSpec(job.result.spec);
         const items = row.spec?.items.length
           ? [...row.spec.items, ...proposed.items.filter(candidate => !row.spec?.items.some(
             existing => existing.name.toLocaleLowerCase('it') === candidate.name.toLocaleLowerCase('it')))]
           : proposed.items;
-        const spec = validateSpec({...proposed, name: row.name, kind: row.spec?.kind ?? proposed.kind, items, quiz: row.spec?.quiz ?? proposed.quiz});
-        await persist({...row, spec, turns: [...row.turns, {role: 'assistant', text: spec.idea, model: job.result.routing?.model}]});
+        const spec = validateSpec({...proposed, name:row.name, kind:row.spec?.kind??proposed.kind, items, quiz:row.spec?.quiz??proposed.quiz});
+        await persist({...row,spec,turns:[...row.turns,{role:'assistant',text:spec.idea,model:job.result.routing?.model}]});
         return;
       }
+      if (job.status !== 'queued' && job.status !== 'running') throw Error('Stato del lavoro non riconosciuto.');
+      if (job.status === 'queued' && Number.isFinite(job.nextEligibleAt) && job.nextEligibleAt > Date.now()) {
+        throw Error('Lavoro sospeso per quota fino a '+new Date(job.nextEligibleAt).toLocaleString('it-IT')+'. Riprendi dalla ricevuta senza reinvio.');
+      }
       setJobStatus(job.status === 'queued' ? 'Richiesta in coda…' : 'Il motore sta elaborando…');
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve=>setTimeout(resolve,1000));
     }
-    throw Error('L’elaborazione sta richiedendo troppo tempo. L’idea è salvata.');
+    throw Error('L’elaborazione continua sul gateway. Riprendi dalla ricevuta salvata.');
   }
 
   async function run(action: () => Promise<void>) {
@@ -191,7 +224,7 @@ export function useWorkspace() {
   }
 
   function send() {
-    if (!project) return;
+    if (!project || (project.turns.at(-1)?.job && project.turns.at(-1)?.job?.state !== 'closed' && project.turns.at(-1)?.role === 'user')) return;
     return run(async () => {
       const row: Conversation = {...project, turns: [...project.turns, {role: 'user', text: text(note, 'Messaggio', 4000), requestId: id()}]};
       await persist(row);
@@ -201,7 +234,18 @@ export function useWorkspace() {
   }
 
   function retry() {
-    if (project?.turns.at(-1)?.role === 'user') return run(() => askAI(project));
+    if (project?.turns.at(-1)?.role !== 'user') return;
+    return run(async () => {
+      if (recoveredStorage.current && !project.turns.at(-1)?.job) throw Error('Archivio recuperato da backup: esito precedente non verificabile. Scrivi un nuovo messaggio solo dopo aver controllato il gateway.');
+      await askAI(project);
+    });
+  }
+
+  function abandonJob() {
+    const last = project?.turns.at(-1);
+    if (!project || last?.role !== 'user' || !last.job || last.job.state === 'closed') return;
+    const job = closeJob(last.job);
+    return run(() => persist({...project,turns:[...project.turns.slice(0,-1),{...last,job}]}));
   }
 
   async function download() {
@@ -212,7 +256,7 @@ export function useWorkspace() {
 
   return {page, projects, project, ready, busy, jobStatus, error, name, setName, idea, setIdea, note, setNote,
     providers, selected, setSelected, consent, setConsent, engineNote, access, go, start, open, create, send,
-    retry, download, refreshEngines, liveAI: !!api, nativePilot, iosLanPilot, pilotAddress, changePilotAddress, testerCode, setTesterCode};
+    retry, abandonJob, download, refreshEngines, liveAI: !!api, nativePilot, iosLanPilot, pilotAddress, changePilotAddress, testerCode, setTesterCode};
 }
 
 export type Workspace = ReturnType<typeof useWorkspace>;
