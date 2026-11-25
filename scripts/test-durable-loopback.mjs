@@ -2,9 +2,11 @@
 // No user data, model downloads, real provider calls, or inherited API keys.
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
-import {spawn} from 'node:child_process';
+import {spawn,execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {createHash} from 'node:crypto';
 import {once} from 'node:events';
-import {mkdtemp,rm,writeFile,readFile} from 'node:fs/promises';
+import {mkdtemp,rm,writeFile,readFile,readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -71,6 +73,23 @@ try{
  await stop();await start({FORGIA_SQLITE_CLOUD_STATE:'1'});
  assert.deepEqual(await wait(id),job);
  assert.equal(calls,2);
+ // Exercise the Superhandy CLI against the real Forgia main/durable queue.
+ // Only the local Ollama transport is synthetic; no actual model inference.
+ const cli=async(...args)=>JSON.parse((await promisify(execFile)(process.execPath,['--experimental-strip-types','scripts/superhandy.ts',...args],{cwd:root,env,timeout:15000})).stdout);
+ const planPath=join(dir,'superhandy-plan.json'),reviewHash='a'.repeat(64);
+ await writeFile(planPath,JSON.stringify({project:'demo',planner:'planner',reviewer:'reviewer',executors:['one'],tasks:[{id:'spec',depends:[],criterion:'Catalogo Superhandy'},{id:'next',depends:['spec'],criterion:'Altro catalogo'}]}),{mode:0o600});
+ const baselineSha=await cli('init','integration',planPath);await cli('approve','integration','reviewer',baselineSha,reviewHash);
+ assert.equal((await (await request('/providers')).json()).durableLocal,true);
+ const sh=await cli('run-local-spec','integration','one','spec','local');assert.equal(sh.status,'submitted');
+ assert.equal((await wait(sh.jobId)).status,'done');assert.equal(calls,3);
+ const artifacts=join(dir,'superhandy','integration-artifacts'),names=await readdir(artifacts);
+ const artifact=await readFile(join(artifacts,names.find(n=>n.endsWith('.result.json'))));
+ assert.equal(createHash('sha256').update(artifact).digest('hex'),sh.evidence);
+ assert.deepEqual(JSON.parse(artifact.toString()).spec,spec);
+ assert.equal(await cli('claim','integration','one'),null);
+ await cli('review','integration','reviewer','spec',sh.evidence,'accept',reviewHash);
+ assert.equal((await cli('claim','integration','one')).task.id,'next');
+ const afterBridge=calls;
  // Explicit rate-limit refusal: persist the same suspended job and honor
  // Retry-After across a real process restart. Never contact a cloud provider.
  rateLimited=true;
@@ -81,15 +100,15 @@ try{
  assert.ok(suspended.id);assert.ok(suspended.nextEligibleAt>=started+120000);
  const pending=await (await request('/jobs/'+suspended.id)).json();
  assert.equal(pending.status,'queued');assert.equal(pending.nextEligibleAt,suspended.nextEligibleAt);
- assert.equal(calls,3);
+ assert.equal(calls,afterBridge+1);
  await stop();await start({FORGIA_SQLITE_CLOUD_STATE:'1'});
  assert.deepEqual(await (await request('/jobs/'+suspended.id)).json(),pending);
- await delay(800);assert.equal(calls,3);
+ await delay(800);assert.equal(calls,afterBridge+1);
  const otherSuspendedResponse=await post('/plan',{...body,idea:'Altro catalogo quota',provider:'local'},'request-quota-other');
  assert.equal(otherSuspendedResponse.status,429);
  const otherSuspended=await otherSuspendedResponse.json();
  assert.notEqual(otherSuspended.id,suspended.id);assert.ok(otherSuspended.nextEligibleAt>=suspended.nextEligibleAt-1000);
- assert.equal(calls,3); // persisted provider-wide cooldown blocks a different job
+ assert.equal(calls,afterBridge+1); // persisted provider-wide cooldown blocks a different job
  await stop();
  // Omitting the state opt-in after bootstrap must fail closed.
  child=spawn(process.execPath,['--experimental-strip-types','server/main.ts'],{cwd:root,env,stdio:'ignore'});
@@ -97,5 +116,5 @@ try{
  // A normal legacy launch must refuse an existing cutover directory.
  child=spawn(process.execPath,['--experimental-strip-types','server/main.ts'],{cwd:root,env:{...env,FORGIA_SQLITE_LOCAL:'0'},stdio:'ignore'});
  const [code]=await once(child,'exit');assert.notEqual(code,0);child=undefined;
- console.log('D3 PASS: HTTP, routing, local adapter fixture, SQLite persistence, restart, legacy guard.');
+ console.log('D3/BSH11 PASS: HTTP, routing, Superhandy CLI, local adapter fixture, SQLite persistence, restart, legacy guard.');
 }finally{await stop();if(fake.listening){fake.closeAllConnections();await new Promise(r=>fake.close(r));}await rm(dir,{recursive:true,force:true});}

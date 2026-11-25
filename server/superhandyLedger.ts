@@ -75,9 +75,9 @@ export function openSuperhandyLedger(path:string,initialize=false,clock=Date.now
    const b=baseline();requireThat(actor===b.plan.reviewer&&sha===b.sha&&digest(evidence)&&b.approval===null);
    q('UPDATE sh_baseline SET approval=? WHERE singleton=1').run(evidence);event(actor,'approve',null,evidence);
   });},
-  claim(actor:string,ttl=60000){return tx(()=>{
-   const b=baseline(),n=now();requireThat(b.approval&&b.plan.executors.includes(actor)&&Number.isSafeInteger(ttl)&&ttl>0&&ttl<=300000);
-   recover(n);const task=b.plan.tasks.find(t=>row(t.id).status==='queued'&&t.depends.every(d=>row(d).status==='accepted'));
+  claim(actor:string,ttl=60000,taskId?:string){return tx(()=>{
+   const b=baseline(),n=now();requireThat(b.approval&&b.plan.executors.includes(actor)&&Number.isSafeInteger(ttl)&&ttl>0&&ttl<=300000&&(taskId===undefined||id(taskId)));
+   recover(n);const task=b.plan.tasks.find(t=>(taskId===undefined||taskId===t.id)&&row(t.id).status==='queued'&&t.depends.every(d=>row(d).status==='accepted'));
    if(!task)return null;
    q("UPDATE sh_task SET status='claimed',actor=?,fence=fence+1,until=? WHERE id=?").run(actor,n+ttl,task.id);event(actor,'claim',task.id);
    const r=row(task.id);return {lease:{id:r.id,actor,fence:r.fence},baselineSha:b.sha,task,checkpoint:r.checkpoint};
@@ -86,13 +86,31 @@ export function openSuperhandyLedger(path:string,initialize=false,clock=Date.now
    const n=now(),r=row(lease.id);requireThat(r.status==='claimed'||r.status==='dispatched');active(lease,r.status,n);requireThat(Number.isSafeInteger(ttl)&&ttl>0&&ttl<=300000);
    q('UPDATE sh_task SET until=max(until,?) WHERE id=?').run(n+ttl,lease.id);event(lease.actor,'heartbeat',lease.id);
   });},
-  dispatch(lease:Lease){return tx(()=>{active(lease,'claimed',now());q("UPDATE sh_task SET status='dispatched' WHERE id=?").run(lease.id);event(lease.actor,'dispatch',lease.id);});},
+  dispatch(lease:Lease,intentEvidence?:string){return tx(()=>{active(lease,'claimed',now());requireThat(intentEvidence===undefined||digest(intentEvidence));q("UPDATE sh_task SET status='dispatched' WHERE id=?").run(lease.id);event(lease.actor,'dispatch',lease.id,intentEvidence??null);});},
+  recordReceipt(lease:Lease,evidence:string){return tx(()=>{
+   active(lease,'dispatched',now());requireThat(digest(evidence));
+   const last=q("SELECT seq,actor,evidence FROM sh_event WHERE task=? AND action='dispatch' ORDER BY seq DESC LIMIT 1").get(lease.id);
+   requireThat(last&&last.actor===lease.actor&&digest(last.evidence)&&!q("SELECT 1 FROM sh_event WHERE task=? AND action='receipt' AND seq>?").get(lease.id,last.seq));
+   event(lease.actor,'receipt',lease.id,evidence);
+  });},
   handoff(lease:Lease,checkpoint:string){return tx(()=>{
    const r=active(lease,'claimed',now());requireThat(digest(checkpoint));const next=r.handoffs>=2?'blocked':'queued';
    q('UPDATE sh_task SET status=?,actor=NULL,until=NULL,checkpoint=?,handoffs=handoffs+? WHERE id=?').run(next,checkpoint,next==='queued'?1:0,lease.id);event(lease.actor,'handoff-'+next,lease.id,checkpoint);return next;
   });},
   submit(lease:Lease,evidence:string){return tx(()=>{
    active(lease,'dispatched',now());requireThat(digest(evidence));q("UPDATE sh_task SET status='submitted',until=NULL,evidence=? WHERE id=?").run(evidence,lease.id);event(lease.actor,'submit',lease.id,evidence);
+  });},
+  // Explicit reconciliation of a result already dispatched; no requeue or acceptance.
+  // Trusted local actor IDs are declarations, as for the rest of this ledger.
+  reconcile(lease:Lease,evidence:string){return tx(()=>{
+   const b=baseline(),n=now();requireThat(b.approval&&lease&&id(lease.id)&&id(lease.actor)&&b.plan.executors.includes(lease.actor)&&Number.isSafeInteger(lease.fence)&&lease.fence>0&&digest(evidence));
+   recover(n);const r=row(lease.id);
+   requireThat(r.fence===lease.fence&&(r.status==='dispatched'||r.status==='uncertain'));
+   if(r.status==='dispatched')active(lease,'dispatched',n);
+   const last=q("SELECT seq,actor,evidence FROM sh_event WHERE task=? AND action='dispatch' ORDER BY seq DESC LIMIT 1").get(lease.id);
+   requireThat(last&&last.actor===lease.actor&&digest(last.evidence));
+   const receipt=q("SELECT actor,evidence FROM sh_event WHERE task=? AND action='receipt' AND seq>? ORDER BY seq DESC LIMIT 1").get(lease.id,last.seq);requireThat(receipt?.actor===lease.actor&&digest(receipt.evidence));
+   q("UPDATE sh_task SET status='submitted',actor=?,until=NULL,evidence=? WHERE id=?").run(lease.actor,evidence,lease.id);event(lease.actor,'reconcile',lease.id,evidence);
   });},
   review(actor:string,key:string,deliverable:string,decision:'accept'|'reject',evidence:string){return tx(()=>{
    const b=baseline(),r=row(key);requireThat(b.approval&&actor===b.plan.reviewer&&actor!==r.actor&&r.status==='submitted'&&digest(deliverable)&&r.evidence===deliverable&&digest(evidence)&&(decision==='accept'||decision==='reject'));

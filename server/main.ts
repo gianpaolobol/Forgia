@@ -88,7 +88,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
      return {id: config.id, model: config.model, profile: config.profile, configured: false};
     }
    });
-   res.end(JSON.stringify({mode:'free-only',providers,localDevelopmentOnly:session === undefined}));return;
+   res.end(JSON.stringify({mode:'free-only',providers,localDevelopmentOnly:session === undefined,durableLocal:session===undefined&&sqliteLocal}));return;
   }
   if (req.method === 'GET' && /^\/jobs\/[a-f0-9-]{36}$/.test(req.url ?? '')) {
    const job = await jobs.read(req.url!.slice(6), session, grant);
