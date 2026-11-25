@@ -1,4 +1,4 @@
-# Forgia V1.0 — piano maestro v0.7
+# Forgia V1.0 — piano maestro v0.8
 Data: 2026-11-24. Stato: proposta, NON approvata da revisore indipendente. Revisore logico previsto: RV-01; identità/modello/sessione da registrare all'assegnazione. Non equiparare questo autore a un secondo agente. La baseline resta da revisionare; in modalità C sono consentite implementazioni reversibili su branch isolati, senza approvazione definitiva.
 
 ## Inventario verificato su GitHub
@@ -88,3 +88,7 @@ Proposta da sottoporre a RV-01. [Evidenza iterazione 6](evidence/2026-11-24-iter
 
 ## Addendum v0.7 — 25 novembre 2026, modalità C
 Autorizzazione esplicita del titolare, AGENTS.md 30671e65418cf240993d4eadd6e45f0671553cc1. Supera i precedenti vincoli di sospensione preventiva per F00/F02/F06: RV-01 rimane pendente e obbligatorio per validazione definitiva. Nessun merge main. Inventario congelato: main f8e64a98a37d4f40177ea0bbb13006db93ee874e, stack PR #1–4 fed1b4147b8d92945cc42eca85fd58e375dee014, #5 502880bc40a67a806640f5b8ce345cbb612b08c8, #6 30671e65418cf240993d4eadd6e45f0671553cc1. F02: candidato su ai/codex/v1-consolidation con albero #4, licenza e copyright main, specifica #5, policy/evidenze #6. Verificare confronto blob inclusi asset, CI sul candidato, regressioni e review. Prossimo incremento: R04 host privato e R08 opt-in pilota, poi R05–R07 routing e F05 coda. Gemini resta in quarantena. Autocontrollo dell'autore non indipendente.
+
+
+## Addendum v0.8 — R08/F09 separazione profili (25 novembre 2026)
+Baseline #9 a2d329cd, #8 a747090a. Modalità C: implementazione reversibile, RV-01 non approvato. Dipende da F02/R04. Task R08a: disattivare connessione pilota standard iOS/Android anche con URL valorizzato; iOS opt-in preesistente con indirizzo privato modificabile, Android opt-in nuovo con CA e origine HTTPS privata obbligatorie in configurazione build. Web resta loopback. Test: flag mancanti/0, URL pubblico/privato, flag per altra piattaforma, URL/CA mancanti e forme ambigue, iOS senza URL, web con flag. R08b: CI per ramo integrato e verifica bundle/config reali, build e test su dispositivi, ancora aperto. Non cambiare workflow o attivare provider in R08a. Autocontrollo: due validatori (config JS, runtime TS) da confrontare con test, non equivalgono a review indipendente. Gate finali invariati.

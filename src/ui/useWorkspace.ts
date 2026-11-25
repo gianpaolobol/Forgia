@@ -3,16 +3,16 @@ import {Platform} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {text, validateSpec} from '../core/spec';
 import {createConversationRepository, requestedAccess, type Conversation} from '../core/conversation';
-import {lanPilotOrigin} from '../core/lanPilot';
+import {lanPilotOrigin, pilotConnection} from '../core/lanPilot';
 import {generateProject} from '../core/generator';
 import {exportBundle} from './export';
 
 export type Page = 'home' | 'new' | 'detail' | 'engines' | 'access' | 'method';
-const iosLanPilot = Platform.OS === 'ios' && process.env.EXPO_PUBLIC_FORGIA_IOS_LAN_PILOT === '1';
-const localAPI = 'http://127.0.0.1:8787';
-const configuredPilot = process.env.EXPO_PUBLIC_FORGIA_PILOT_URL?.trim().replace(/\/$/, '');
-const pilotAPI = configuredPilot && /^https:\/\/[a-z0-9.-]+(?::[0-9]{1,5})?$/i.test(configuredPilot)
-  ? configuredPilot : undefined;
+// Expo only inlines direct EXPO_PUBLIC_* property access.
+const pilotProfile = (editable?: string) => pilotConnection(Platform.OS,
+  process.env.EXPO_PUBLIC_FORGIA_IOS_LAN_PILOT,
+  process.env.EXPO_PUBLIC_FORGIA_ANDROID_LAN_PILOT,
+  process.env.EXPO_PUBLIC_FORGIA_PILOT_URL, editable);
 
 async function gatewayRequest(url: string, options: RequestInit, timeout: number) {
   const controller = new AbortController();
@@ -43,9 +43,8 @@ export function useWorkspace() {
   const [selected, setSelected] = useState('auto');
   const [consent, setConsent] = useState(false);
   const [testerCode, setTesterCode] = useState('');
-  const [pilotAddress, setPilotAddress] = useState(pilotAPI ?? '');
-  const nativePilot = iosLanPilot || (Platform.OS !== 'web' && !!pilotAPI);
-  const api = Platform.OS === 'web' ? localAPI : iosLanPilot ? lanPilotOrigin(pilotAddress) : pilotAPI;
+  const [pilotAddress, setPilotAddress] = useState(() => pilotProfile().initialAddress ?? '');
+  const {nativePilot, iosLanPilot, api} = pilotProfile(pilotAddress);
   const [engineNote, setEngineNote] = useState('Nessun motore AI collegato');
   const session = useRef<string | undefined>(undefined);
   const locked = useRef(false);
