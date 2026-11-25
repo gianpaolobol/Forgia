@@ -146,3 +146,16 @@ Base #19 fc48a25e; RV-01 pendente, autocontrollo distinto. Cache SQLite separata
 
 ## Addendum v0.19 — F05-C2, bootstrap cloud protetto (25 novembre 2026)
 Base #20 05ddb6bc, RV-01 pendente. Preparare quota/cache SQLite nel gateway loopback già migrato, senza consentire inferenza cloud. Opt-in esplicito `FORGIA_SQLITE_CLOUD_STATE=1`; bootstrap offline una sola volta con `FORGIA_SQLITE_CLOUD_INITIALIZE=1` e snapshot gateway.v1 presente; non dedurre archivio nuovo da file assente. Creazione esclusiva, directory e sidecar privati (ACL Windows da provare), nessuna ricreazione o reset al riavvio, verifica dei tre provider prima del bind. Conservare JSON e backup; mai avviare writer legacy in parallelo, procedura offline resta precondizione operatore. Quota e cache condividono un DB dedicato; cloud e LAN restano disabilitati, nessuna chiamata reale. Test B1 import conteggi e persistenza, B2 snapshot assente/corrotto e bootstrap duplicato, B3 DB assente/marker assente, B4 privacy file e symlink, B5 integrazione gateway e regressioni C4/C5. Non promuovere a cutover cloud completo: revoca, sospensione durevole, Retry-After, migrazione job cloud, CI, Windows, RV-01 rimangono aperti. 
+
+## Addendum v0.20 — F05/R09, ripresa quota durevole (25 novembre 2026)
+Base #23 1c8b7820685eac3f5c38aea6e26faea22410ed77; mantiene portfolio e catalogo OpenRouter del candidato. Issue #24, esecutore Codex, RV-01 pendente. Non abilitare provider cloud né LAN nel gateway SQLite. Sospensione atomica e fenced solo per diniego quota esplicito tipizzato (pre-inferenza o HTTP 429 esplicito), non per errori di trasporto o esiti incerti. Deadline Retry-After conservativa, minimo 60s; limite giornaliero fino al successivo giorno UTC. Se il routing ha altri errori, non promuovere a retry sicuro. Persistenza deadline e numero di sospensioni (massimo due riprese), nuovo controllo autorizzazione/consenso e quota a ogni claim, nessun rimborso dei tentativi. API job mantiene stato queued con nextEligibleAt; /plan restituisce 429 con ID se sospeso. Tabella aggiuntiva, nessun downgrade del writer dopo cutover: backup coerente offline prima di prova.
+
+| Test | Criterio |
+|---|---|
+| S1 | Retry-After delta/data, valori invalidi e limiti; mai anticipare il valore valido |
+| S2 | sospensione fenced; due connessioni, reopen, nessun claim prima della deadline, nuovo controllo auth |
+| S3 | limite due riprese, esito incerto non ripetuto, lease perso non riscrive |
+| S4 | HTTP reale con adapter locale e risposta 429 fixture, stato queued/deadline persistente dopo restart e zero invocazioni anticipate |
+| S5 | regressioni gateway/ledger/worker, routing mixed failure non sospeso, CI e typecheck su Node 24 |
+
+Nessuna equivalenza fra fixture e inferenza reale, né tra autocontrollo e revisione indipendente. Restano revoca cloud/in-flight, cutover, UI ripresa e build/installazione.
