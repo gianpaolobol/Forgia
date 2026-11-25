@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {prepareLocalLedger,createDurableLocalJobs} from '../server/durableJobs.ts';
@@ -55,4 +55,11 @@ test('D2 migrazione offline: running incerto, queued cloud rifiutato, queued loc
   assert.equal((await wait(jobs,ids[2]))?.status,'done');
   assert.equal(calls,1);
  }finally{await jobs.stop();ledger.close();rmSync(dir,{recursive:true,force:true});}
+});
+test('D4 database vuoto o marker mancante non reinizializzato al riavvio',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'forgia-local-'));
+ try{
+  writeFileSync(join(dir,'jobs.sqlite'),'',{mode:0o600});
+  assert.throws(()=>prepareLocalLedger(dir,'[]',false),/Marker di migrazione mancante/);
+ }finally{rmSync(dir,{recursive:true,force:true});}
 });

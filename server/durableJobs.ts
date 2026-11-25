@@ -26,7 +26,7 @@ export function prepareLocalLedger(directory: string, snapshot: string, initiali
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   }
   const ledger = openJobLedger(path);
-  try { ledger.importLegacy(snapshot); return ledger; }
+  try { ledger.importLegacy(snapshot,!initialize); return ledger; }
   catch (error) { ledger.close(); throw error; }
 }
 
