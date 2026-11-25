@@ -1,3 +1,4 @@
+import {runAuthorized, grantPattern, type JobAuthorization} from './jobAuthorization.ts';
 import {randomUUID} from 'node:crypto';
 import type {Storage} from '../src/core/storage.ts';
 import {text} from '../src/core/spec.ts';
@@ -6,7 +7,7 @@ import {knownRoutingStatus} from './routingFailure.ts';
 import {routingContext, type RoutingContext} from './routing.ts';
 
 type Input = {idea: string; provider: string; consent: boolean; context: RoutingContext};
-type Job<R> = {id: string; session: string; requestKey?: string} & (
+type Job<R> = {id: string; session: string; requestKey?: string; grant?: string} & (
   {status: 'queued' | 'running'; input: Input} |
   {status: 'done'; result: R} |
   {status: 'failed'; error: string; statusCode?: number}
@@ -14,7 +15,7 @@ type Job<R> = {id: string; session: string; requestKey?: string} & (
 const key = 'jobs.v1';
 const sessionPattern = /^[a-f0-9-]{36}$/i;
 
-export function createJobs<R>(store: Storage, run: (input: Input, backlog: number, session: string) => Promise<R>) {
+export function createJobs<R>(store: Storage, run: (input: Input, backlog: number, session: string, signal?: AbortSignal, grant?: string) => Promise<R>, authorize?: JobAuthorization) {
   let writes = Promise.resolve<unknown>(undefined);
   let worker: Promise<void> | undefined;
   let lastSession: string | undefined;
@@ -24,7 +25,7 @@ export function createJobs<R>(store: Storage, run: (input: Input, backlog: numbe
     const saved: Job<R>[] = raw === null ? [] : JSON.parse(raw);
     if (!Array.isArray(saved)) throw Error('Coda locale non valida.');
     jobs = saved.map(job => job.status === 'running'
-      ? {id: job.id, session: job.session, requestKey: job.requestKey, status: 'failed', error: 'Lavoro interrotto dal riavvio. Puoi inviarlo di nuovo.'}
+      ? {id: job.id, session: job.session, requestKey: job.requestKey, grant: job.grant, status: 'failed', error: 'Lavoro interrotto dal riavvio. Puoi inviarlo di nuovo.'}
       : job);
     if (saved.some(job => job.status === 'running')) await store.setItem(key, JSON.stringify(jobs));
   })();
@@ -54,10 +55,10 @@ export function createJobs<R>(store: Storage, run: (input: Input, backlog: numbe
       });
       if (!task) return;
       const {job, backlog} = task;
-      const identity = {id: job.id, session: job.session, requestKey: job.requestKey};
+      const identity = {id: job.id, session: job.session, requestKey: job.requestKey, grant: job.grant};
       let terminal: Job<R>;
       try {
-        terminal = {...identity, status: 'done', result: await run(job.input, backlog, job.session)};
+        terminal = {...identity, status: 'done', result: await (authorize ? runAuthorized(authorize, job.session, job.grant, signal => run(job.input, backlog, job.session, signal, job.grant)) : run(job.input, backlog, job.session))};
       } catch (error) {
         terminal = {...identity, status: 'failed',
           error: error instanceof Error && !('code' in error) ? error.message : 'Elaborazione non riuscita.',
@@ -88,30 +89,32 @@ export function createJobs<R>(store: Storage, run: (input: Input, backlog: numbe
   start();
 
   return {
-    async submit(body: Record<string, unknown>, requestKey?: string) {
+    async submit(body: Record<string, unknown>, requestKey?: string, grant?: string) {
+      if (authorize && (!grant || !grantPattern.test(grant))) throw Object.assign(Error('Grant pilota mancante.'), {status: 403});
+      if (!authorize) grant = undefined;
       const idea = text(body.idea, 'Idea', 8000);
       const {session, provider} = body;
       if (typeof session !== 'string' || !sessionPattern.test(session)) throw Error('Sessione di lavoro non valida.');
       if (typeof provider !== 'string' || (provider !== 'auto' && !providerIds.includes(provider))) throw Error('Motore non valido.');
       const input = {idea, provider, consent: body.cloudConsent === true, context: routingContext(body.kind, body.phase)};
       const id = await locked(async () => {
-        const previous = requestKey && jobs.findLast(job => job.session === session && job.requestKey === requestKey);
+        const previous = requestKey && jobs.findLast(job => job.session === session && job.requestKey === requestKey && job.grant === grant);
         if (previous && previous.status !== 'failed') return previous.id;
         const id = randomUUID();
         const active = jobs.filter(job => job.status === 'queued' || job.status === 'running');
         if (active.length >= 16 || active.filter(job => job.session === session).length >= 3) {
           throw Object.assign(Error('Coda piena. Attendi la fine di un lavoro prima di inviarne un altro.'), {status: 429});
         }
-        await save([...jobs, {id, session, requestKey, status: 'queued', input}]);
+        await save([...jobs, {id, session, requestKey, grant, status: 'queued', input}]);
         return id;
       });
       start();
       return {id};
     },
-    read(id: string, session?: string) {
+    read(id: string, session?: string, grant?: string) {
       return locked(() => {
         const job = jobs.find(item => item.id === id);
-        if (!job || (session !== undefined && job.session !== session)) return null;
+        if (!job || (session !== undefined && job.session !== session) || (authorize && (!grant || !session || job.grant !== grant))) return null;
         if (job.status === 'done') return {status: job.status, result: job.result};
         if (job.status === 'failed') return {status: job.status, error: job.error, statusCode: job.statusCode};
         return {status: job.status};
