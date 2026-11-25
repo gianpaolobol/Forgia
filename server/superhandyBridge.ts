@@ -41,7 +41,7 @@ export async function runLocalSpec(ledger:Ledger,options:{
  const transport=options.transport??fetch,signal=AbortSignal.timeout(timeout);
  const request=(path:string,init:RequestInit={})=>transport(origin+path,{...init,signal,redirect:'error'});
  const meta=await json(await request('/providers'),65536);
- if(!record(meta)||meta.mode!=='free-only'||meta.localDevelopmentOnly!==true||meta.durableLocal!==true||!Array.isArray(meta.providers))throw Error('Gateway SQLite loopback richiesto.');
+ if(!record(meta)||meta.mode!=='free-only'||meta.localDevelopmentOnly!==true||meta.durableLocal!==true||meta.durableModelPin!==true||!Array.isArray(meta.providers))throw Error('Gateway SQLite loopback richiesto.');
  const provider=meta.providers.find((p:unknown)=>record(p)&&p.id===options.provider&&p.configured===true);
  if(!record(provider)||typeof provider.model!=='string'||!provider.model)throw Error('Provider locale non configurato.');
  requirePrivateDirectory(options.artifactDir);
@@ -63,7 +63,7 @@ export async function runLocalSpec(ledger:Ledger,options:{
  signal.throwIfAborted();checkGrant();
  ledger.dispatch(lease,intentEvidence);
  checkGrant();
- const receipt=await json(await request('/jobs',{method:'POST',headers:{'content-type':'application/json','idempotency-key':requestKey},body:JSON.stringify({session,provider:options.provider,idea:task.criterion,cloudConsent:false,kind:'catalog',phase:'draft'})}),65536);
+ const receipt=await json(await request('/jobs',{method:'POST',headers:{'content-type':'application/json','idempotency-key':requestKey},body:JSON.stringify({session,provider:options.provider,expectedModel:provider.model,idea:task.criterion,cloudConsent:false,kind:'catalog',phase:'draft'})}),65536);
  if(!record(receipt)||typeof receipt.id!=='string'||!uuid.test(receipt.id))throw Error('Ricevuta gateway non valida: non ripetere.');
  const jobId=receipt.id;
  const receiptEvidence=persist(dir,tag+'.receipt.json',{jobId,session,requestKey});
