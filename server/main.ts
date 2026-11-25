@@ -1,13 +1,14 @@
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http';
 import {createServer as createHttpsServer} from 'node:https';
 import {readFile} from 'node:fs/promises';
-import {pilotIdentity, pilotBindHost, validatePilotAccounts} from './pilot.ts';
+import {pilotGrant, pilotGrantActive, pilotBindHost, validatePilotAccounts} from './pilot.ts';
 import {resolve} from 'node:path';
 import {createProvider} from './providers.ts';
 import {createGateway} from './gateway.ts';
 import {parseFit} from './routing.ts';
 import {diskStorage} from './disk.ts';
 import {createJobs} from './jobs.ts';
+import type {JobAuthorization} from './jobAuthorization.ts';
 import {createDurableLocalJobs, prepareLocalLedger} from './durableJobs.ts';
 import {existsSync} from 'node:fs';
 import {prepareCloudState} from './cloudState.ts';
@@ -56,8 +57,8 @@ async function executePlan({idea, provider, consent, context}: import('./durable
   const result = await gateway.plan(idea, selected, sqliteLocal ? false : consent, scope, signal);
   return {...result, routing: {provider: selected.id, model: selected.model, reason: 'Selezione manuale.', skipped: []}};
 }
-function buildJobs(store: typeof storage, isolated: boolean) {
- return createJobs(store,(input,backlog,session)=>executePlan(input,backlog,session,isolated));
+function buildJobs(store: typeof storage, isolated: boolean, authorize?: JobAuthorization) {
+ return createJobs(store,(input,backlog,session,signal,grant)=>executePlan(input,backlog,grant ? `${session}:${grant}` : session,isolated,signal),authorize);
 }
 const durableJobs = localLedger ? createDurableLocalJobs(
  localLedger,
@@ -71,7 +72,7 @@ function reply(res: ServerResponse, status: number, payload: unknown) {
  res.end(JSON.stringify(payload));
 }
 
-async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof localJobs, session?: string) {
+async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof localJobs, session?: string, grant?: string) {
  res.setHeader('Cache-Control', 'no-store');
  res.setHeader('Content-Type', 'application/json');
  res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -89,7 +90,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
    res.end(JSON.stringify({mode:'free-only',providers,localDevelopmentOnly:session === undefined}));return;
   }
   if (req.method === 'GET' && /^\/jobs\/[a-f0-9-]{36}$/.test(req.url ?? '')) {
-   const job = await jobs.read(req.url!.slice(6), session);
+   const job = await jobs.read(req.url!.slice(6), session, grant);
    if (!job) res.writeHead(404);
    res.end(JSON.stringify(job ?? {error:'Lavoro non trovato.'}));
    return;
@@ -113,6 +114,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
   const receipt = await jobs.submit(
    session ? {...body, session} : waitForResult ? {...body, session:'00000000-0000-0000-0000-000000000000'} : body,
    (session || sqliteLocal) && typeof requestKey === 'string' ? requestKey : undefined,
+   grant,
   );
   if (!waitForResult) {
    res.writeHead(202);
@@ -177,7 +179,8 @@ if (process.env.FORGIA_PILOT_HOST) {
  if (!tls) throw Error('Configurazione TLS pilota mancante.');
  const readAccounts = async (): Promise<unknown> => JSON.parse(await readFile(accountsPath, 'utf8'));
  validatePilotAccounts(await readAccounts());
- const pilotJobs = buildJobs(diskStorage(resolve(dataDirectory, 'pilot')), true);
+ const pilotJobs = buildJobs(diskStorage(resolve(dataDirectory, 'pilot')), true,
+  async (session, grant) => pilotGrantActive(session, grant, await readAccounts()));
  createHttpsServer({...tls, minVersion: 'TLSv1.2', requestTimeout: 15_000, headersTimeout: 10_000}, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', 'application/json');
@@ -185,10 +188,10 @@ if (process.env.FORGIA_PILOT_HOST) {
   if (!/^Bearer [a-f0-9]{64}$/.test(req.headers.authorization ?? '')) {
    return reply(res, 401, {error: 'Codice tester richiesto.'});
   }
-  let session: string | undefined;
-  try { session = pilotIdentity(req.headers.authorization, await readAccounts()); }
+  let identity: ReturnType<typeof pilotGrant>;
+  try { identity = pilotGrant(req.headers.authorization, await readAccounts()); }
   catch { return reply(res, 503, {error: 'Accesso pilota temporaneamente indisponibile.'}); }
-  if (!session) return reply(res, 401, {error: 'Codice tester scaduto o non valido.'});
-  await handle(req, res, pilotJobs, session);
+  if (!identity) return reply(res, 401, {error: 'Codice tester scaduto o non valido.'});
+  await handle(req, res, pilotJobs, identity.session, identity.grant);
  }).listen(port, host, () => console.log('Gateway HTTPS per tester attivo.'));
 }
