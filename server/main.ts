@@ -1,7 +1,7 @@
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http';
 import {createServer as createHttpsServer} from 'node:https';
 import {readFile} from 'node:fs/promises';
-import {pilotIdentity, pilotBindHost} from './pilot.ts';
+import {pilotIdentity, pilotBindHost, validatePilotAccounts} from './pilot.ts';
 import {resolve} from 'node:path';
 import {createProvider} from './providers.ts';
 import {createGateway} from './gateway.ts';
@@ -142,7 +142,7 @@ if (process.env.FORGIA_PILOT_HOST) {
   : certPath && keyPath ? {cert: await readFile(certPath), key: await readFile(keyPath)} : undefined;
  if (!tls) throw Error('Configurazione TLS pilota mancante.');
  const readAccounts = async (): Promise<unknown> => JSON.parse(await readFile(accountsPath, 'utf8'));
- if (!Array.isArray(await readAccounts())) throw Error('Elenco tester pilota non valido.');
+ validatePilotAccounts(await readAccounts());
  const pilotJobs = buildJobs(diskStorage(resolve(dataDirectory, 'pilot')), true);
  createHttpsServer({...tls, minVersion: 'TLSv1.2', requestTimeout: 15_000, headersTimeout: 10_000}, async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
