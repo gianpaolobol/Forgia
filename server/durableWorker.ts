@@ -1,5 +1,6 @@
 import type {openJobLedger} from './jobLedger.ts';
 import {inputPayload} from './legacyJobMigration.ts';
+import {QuotaDeferral, retryDeadline} from './quotaDeferral.ts';
 
 type Ledger = ReturnType<typeof openJobLedger>;
 export type DurableInput = {idea: string; provider: string; consent: boolean; context: {kind: 'catalog' | 'tracker' | 'community'; phase: 'draft' | 'revision'}};
@@ -11,7 +12,7 @@ type Options = {
   maxRunMs?: number;
   now?: () => number;
 };
-type Outcome = 'idle' | 'failed' | 'done' | 'uncertain' | 'lease-lost';
+type Outcome = 'idle' | 'failed' | 'done' | 'uncertain' | 'lease-lost' | 'deferred';
 
 // Explicit one-shot worker, not an HTTP listener or automatic migration.
 // Authorization is a fresh check at dispatch, not a guarantee of in-flight revocation.
@@ -51,8 +52,14 @@ export async function runOneDurableJob(ledger: Ledger, options: Options): Promis
       if (controller.signal.aborted) throw Error('Worker interrotto.');
       result = JSON.stringify(value);
       if (typeof result !== 'string' || Buffer.byteLength(result) > 4 * 1024 * 1024) throw Error('Risultato non valido.');
-    } catch {
-      // Unknown effects after dispatch: never turn this into an automatic retry.
+    } catch (error) {
+      // Only the trusted explicit refusal type permits a bounded replay.
+      // Cancellation/transport failure may hide an effect and stays uncertain.
+      if (!controller.signal.aborted && error instanceof QuotaDeferral) {
+        const at = now();
+        const outcome = ledger.deferQuota(lease,at,Math.max(error.nextEligibleAt,retryDeadline(null,at)));
+        return outcome === 'exhausted' ? 'failed' : outcome;
+      }
       return ledger.markUncertain(lease,now()) ? 'uncertain' : 'lease-lost';
     }
     return ledger.finish(lease,now(),'done',result) ? 'done' : 'lease-lost';

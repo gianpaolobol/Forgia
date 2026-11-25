@@ -70,7 +70,8 @@ export function createDurableLocalJobs(ledger: Ledger, run: (input: DurableInput
         return {status:'failed' as const,error:result.error,statusCode:result.statusCode};
       }
       if (row.status==='uncertain') return {status:'failed' as const,error:'Esito incerto: non è stato ripetuto automaticamente. Verifica prima di inviare una nuova richiesta.',statusCode:409};
-      return {status:row.status==='queued'?'queued' as const:'running' as const};
+      const nextEligibleAt = ledger.deferredUntil(id);
+      return {status:row.status==='queued'?'queued' as const:'running' as const,...(nextEligibleAt!==undefined?{nextEligibleAt}: {})};
     },
   };
 }

@@ -30,7 +30,7 @@ const localLedger = sqliteLocal ? prepareLocalLedger(sqliteDirectory,await stora
 // persistent state without enabling any external inference or pilot access.
 const cloudState = sqliteCloudState ? prepareCloudState(sqliteDirectory,sqliteCloudInitialize,
   sqliteCloudInitialize ? await storage.getItem('gateway.v1') : null) : undefined;
-const gateway = createGateway(storage,cloudState);
+const gateway = createGateway(storage,{...cloudState,localCooldownLedger:localLedger});
 const configs = [
  {id: 'local', prefix: 'OLLAMA', model: process.env.OLLAMA_MODEL ?? ''},
  {id: 'llamacpp', prefix: 'LLAMACPP', model: process.env.LLAMACPP_MODEL ?? ''},
@@ -123,6 +123,9 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
    const job = await jobs.read(receipt.id);
    if (job?.status === 'done') {res.end(JSON.stringify(job.result));return;}
    if (!job || job.status === 'failed') throw Object.assign(Error(job?.error ?? 'Lavoro non trovato.'), {status: job?.statusCode});
+   if ('nextEligibleAt' in job && typeof job.nextEligibleAt === 'number' && job.nextEligibleAt > Date.now()) {
+    return reply(res,429,{error:'Lavoro sospeso per quota.',id:receipt.id,nextEligibleAt:job.nextEligibleAt});
+   }
    await new Promise(resolve => setTimeout(resolve, 250));
   }
  } catch (error) {

@@ -1,5 +1,7 @@
 import {OpenRouterHttpError, openRouterCatalog} from './openRouterCatalog.ts';
 import type {parseFit} from "./routing.ts";
+import {ProviderError, QuotaDeferral, retryDeadline} from './quotaDeferral.ts';
+export {ProviderError} from './quotaDeferral.ts';
 
 export interface Provider {fit?: ReturnType<typeof parseFit>;id:string;model:string;mode:'local'|'free'|'paid';eligible(signal?: AbortSignal):Promise<boolean>;complete(prompt:string,signal:AbortSignal):Promise<string>}
 export const localProvider = (id: string) => id === "local" || id === "llamacpp";
@@ -31,15 +33,11 @@ const LLAMA_SPEC_SCHEMA = {
  required: ['name','idea','kind','quiz','items'],
  additionalProperties: false,
 };
-export class ProviderError extends Error {
- readonly status?: number;
- constructor(message: string, status?: number) {
-  super(message);
-  this.status = status;
- }
-}
 async function payload(r:Response):Promise<any>{
- if(!r.ok)throw new ProviderError(r.status===429?'Quota gratuita esaurita: lavoro sospeso.':`Servizio AI non disponibile (${r.status}).`,r.status);
+ // Only an actual HTTP 429 response, not an arbitrary transport exception,
+ // establishes an explicit refusal. No quota grant is refunded.
+ if(r.status===429)throw new QuotaDeferral(retryDeadline(r.headers.get('retry-after')), 'Quota gratuita esaurita: lavoro sospeso.');
+ if(!r.ok)throw new ProviderError(`Servizio AI non disponibile (${r.status}).`,r.status);
  const raw=await r.text();if(raw.length>1_000_000)throw new ProviderError('Risposta troppo grande.', 502);
  try { return JSON.parse(raw); } catch { throw new ProviderError('Risposta del servizio AI non valida.', 502); }
 }
