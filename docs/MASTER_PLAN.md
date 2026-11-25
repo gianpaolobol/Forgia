@@ -201,3 +201,7 @@ Base #33 f587fe09, issue #34, piano registrato prima delle modifiche, RV-01 pend
 | H12 | integrazione portfolio/gateway/UI, ACL Windows, Node24 e CI | PENDENTE |
 
 Stato: 9/9 in harness Node22 SQLite reale, typecheck isolato; non F06/F07 completati. Registro eventi non è una prova crittografica antimanomissione, gli hash degli artefatti sono dichiarati dall'operatore e non verificati dal ledger. Nessuna approvazione RV-01, nessun provider reale. 
+
+
+## Addendum v0.26 — F06/F07 bridge locale (25 novembre 2026)
+Base #35 a3142a34, issue #36, RV-01 pendente. Sottoinsieme operativo H10–H12: BSH1 preflight SQLite loopback e provider locale configurato; BSH2 claim approvato, dispatch fenced prima di un solo POST /jobs, sessione isolata e consenso false; BSH3 polling, risultato validato dal gateway e artefatto privato hashato, review umana separata; BSH4 timeout, errore, perdita risposta o storage non ripetono POST; BSH5 dipendenze e review invariati. Nessun nuovo endpoint, nessuna shell, credenziale o cloud. Identità CLI dichiarate da operatore fidato: autenticazione/remoto e revoca reale ancora pendenti. Test con trasporto sintetico distinti da gateway HTTP e modello reale.
