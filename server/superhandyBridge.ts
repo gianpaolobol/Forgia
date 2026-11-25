@@ -33,6 +33,7 @@ export async function runLocalSpec(ledger:Ledger,options:{
  actor:string;taskId:string;provider:LocalProvider;artifactDir:string;
  verifySpec:(value:unknown)=>unknown;transport?:typeof fetch;pollMs?:number;timeoutMs?:number;
 }){
+ if(options.taskId.startsWith('portfolio-'))throw Error('Task di riconciliazione portafoglio: usare il flusso manuale, non AppSpec.');
  if(!['local','llamacpp'].includes(options.provider))throw Error('Solo provider locale esplicito.');
  const timeout=options.timeoutMs??120000,poll=options.pollMs??500;
  if(!Number.isSafeInteger(timeout)||timeout<1||timeout>120000||!Number.isSafeInteger(poll)||poll<0||poll>5000)throw Error('Tempi bridge non validi.');
@@ -111,6 +112,7 @@ function persistResult(dir:string,name:string,value:unknown){
 export async function resumeLocalSpec(ledger:Pick<ReturnType<typeof openSuperhandyLedger>,'inspect'|'reconcile'>,options:{
  actor:string;taskId:string;artifactDir:string;verifySpec:(value:unknown)=>unknown;transport?:typeof fetch;
 }){
+ if(options.taskId.startsWith('portfolio-'))throw Error('Task di riconciliazione portafoglio: usare il flusso manuale, non AppSpec.');
  requirePrivateDirectory(options.artifactDir);
  const state=ledger.inspect(),row=state.tasks.find(r=>r.id===options.taskId);
  if(!state.approval||!row||!['dispatched','uncertain'].includes(String(row.status))||typeof row.fence!=='number'||!Number.isSafeInteger(row.fence)||row.fence<1)throw Error('Task non riconciliabile.');

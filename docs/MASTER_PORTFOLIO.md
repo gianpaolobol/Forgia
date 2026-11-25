@@ -52,3 +52,29 @@ il numero effettivo di richieste free ancora disponibili. Il gateway Forgia
 applica separatamente il proprio limite cloud già configurato.
 
 Vedi [backlog](PROJECT_BACKLOG.md) e [progressi](MASTER_PROGRESS.md).
+
+
+## Intake Superhandy in sola lettura
+
+Per un progetto non sospeso e non assegnato altrove, generare una baseline
+compatibile con il ledger locale (esempio POSIX; usare una directory privata
+già esistente e un archivio nuovo):
+
+```sh
+umask 077
+npm run --silent portfolio -- superhandy .data/portfolio-plan.md portfolio-01 planner reviewer executor > .data/intake-01.json
+node --experimental-strip-types scripts/superhandy.ts init intake-01 .data/intake-01.json
+```
+
+La baseline associa SHA-256 del piano originale, ID e repository esatto ai
+tre task: inventario, confronto dei requisiti, matrice delle evidenze.
+L'operatore conserva l'allegato originale corrispondente al digest; nessun
+testo arbitrario delle milestone viene trasformato in comando. Un riferimento
+ambiguo, progetto sospeso o assegnato altrove non genera una baseline.
+Il revisore dichiarato deve approvare il piano prima del claim e accettare
+ciascuna evidenza prima del task dipendente. Gli attori sono ancora ID
+dichiarati, non account autenticati; la review indipendente resta esterna.
+I task portfolio non sono AppSpec e il bridge locale li rifiuta prima di
+qualsiasi chiamata. Inventario e prove richiedono operatori reali; questo
+non legge GitHub automaticamente, non assegna sviluppo e non autorizza
+modifiche ai repository. Non committare piano o output privati.

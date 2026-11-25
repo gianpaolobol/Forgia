@@ -4,7 +4,13 @@ import {openRouterCatalog, openRouterKeyStatus, requestedFamilies} from '../serv
 
 async function main() {
   const [command, path, projectId, ...extra] = process.argv.slice(2);
-  const usage = 'Uso: portfolio plan <piano.md> | portfolio handoff <piano.md> <progetto> | portfolio models | portfolio key';
+  const usage = 'Uso: portfolio plan <piano.md> | portfolio handoff <piano.md> <progetto> | portfolio models | portfolio key | portfolio superhandy <piano.md> <progetto> <planner> <reviewer> <executor...>';
+  if (command === 'superhandy') {
+    const [planner, reviewer, ...executors] = extra;
+    if (!path || !projectId || !planner || !reviewer || !executors.length) throw Error(usage);
+    const {portfolioSuperhandyBaseline} = await import('../server/portfolioSuperhandy.ts');
+    return portfolioSuperhandyBaseline(await readFile(path, 'utf8'), projectId, {planner, reviewer, executors});
+  }
   if (extra.length) throw Error(usage);
 
   switch (command) {
