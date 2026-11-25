@@ -40,7 +40,7 @@ export function openJobLedger(path: string) {
   function transition(lease: Lease, now: number, from: string, to: string, result: string | null) {
     validateNow(now);
     validateLease(lease);
-    const terminal = to === 'done' || to === 'failed';
+    const terminal = to === 'done' || to === 'failed' || to === 'uncertain';
     return Number(q('UPDATE forgia_jobs_v1 SET status=?, result=?, worker=CASE WHEN ? THEN NULL ELSE worker END, expires=CASE WHEN ? THEN NULL ELSE expires END WHERE id=? AND fence=? AND worker=? AND expires>? AND status=?').run(to,result,Number(terminal),Number(terminal),lease.id,lease.fence,lease.worker,now,from).changes) === 1;
   }
   return {
@@ -76,6 +76,8 @@ export function openJobLedger(path: string) {
         return q('SELECT * FROM forgia_jobs_v1 WHERE id=?').get(row.id) as unknown as Row;
       });
     },
+    failClaim(lease: Lease, now: number, result: string) { return transition(lease,now,'claimed','failed',result); },
+    markUncertain(lease: Lease, now: number) { return transition(lease,now,'dispatched','uncertain',null); },
     markDispatched(lease: Lease, now: number) { return transition(lease,now,'claimed','dispatched',null); },
     heartbeat(lease: Lease, now: number, ttl: number) {
       const until = expiry(now,ttl);

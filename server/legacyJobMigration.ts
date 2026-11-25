@@ -14,7 +14,7 @@ function record(value: unknown): Record<string, unknown> {
 function fields(value: Record<string, unknown>, allowed: string[]) {
   if (Object.keys(value).some(key => !allowed.includes(key))) throw invalid();
 }
-function inputPayload(value: unknown): string {
+export function inputPayload(value: unknown): string {
   const input = record(value);
   fields(input,['idea','provider','consent','context']);
   const {idea,provider,consent} = input;

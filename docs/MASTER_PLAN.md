@@ -1,4 +1,4 @@
-# Forgia V1.0 — piano maestro v0.11
+# Forgia V1.0 — piano maestro v0.14
 Data: 2026-11-24. Stato: proposta, NON approvata da revisore indipendente. Revisore logico previsto: RV-01; identità/modello/sessione da registrare all'assegnazione. Non equiparare questo autore a un secondo agente. La baseline resta da revisionare; in modalità C sono consentite implementazioni reversibili su branch isolati, senza approvazione definitiva.
 
 ## Inventario verificato su GitHub
@@ -121,3 +121,6 @@ Baseline #14 9a143b229; RV-01 pendente, modalità C. Dipende da F05a/b.1. Invent
 | M5 | destinazione non vuota e caps rifiutati; regressioni lease |
 
 Autocontrollo tecnico separato dalla revisione RV-01, ancora non disponibile. Nessun merge o rilascio.
+
+## Addendum v0.14 — F05b.2b, worker durevole (25 novembre 2026)
+Base #15 08fddf963ddcec36e6956a3ef527ebb4b81129f1. Modalità C, RV-01 pendente. Dipende da F05a/b.1/b.2a. Worker esplicito a un job per invocazione, separato da HTTP: claim, decodifica validata del payload, autorizzazione fail-closed immediatamente prima del marker dispatch, heartbeat periodico, completamento fenced; errore di esecuzione dopo marker => lascia esito incerto senza replay; diniego prima del dispatch => cancellazione terminale senza invio (nuova transizione ledger). Nessun dato sensibile nei messaggi di stato. Test W1 successo e mapping, W2 revoca e configurazione indisponibile, W3 payload invalido, W4 errore dopo dispatch e recupero uncertain, W5 lease perso durante attesa autorizzazione, W6 heartbeat durante lavoro. Nessun collegamento gateway live: quote atomiche, retention, lifecycle, ACL directory, integrazione HTTP/UI e revoca in-flight restano aperti. Autocontrollo non indipendente. Nessun merge o attivazione provider.
