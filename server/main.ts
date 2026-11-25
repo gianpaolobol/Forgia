@@ -25,6 +25,7 @@ const sqliteCloudInitialize = process.env.FORGIA_SQLITE_CLOUD_INITIALIZE === '1'
 if (sqliteCloudInitialize && !sqliteCloudState) throw Error('Inizializzazione quota/cache richiede opt-in.');
 if (sqliteCloudState && (!sqliteLocal || sqliteInitialize)) throw Error('Quota/cache richiede coda SQLite già migrata, senza inizializzazione concorrente.');
 if (!sqliteCloudState && existsSync(resolve(sqliteDirectory,'cloud.sqlite'))) throw Error('Archivio quota/cache presente: mantenere opt-in o ripristinare offline.');
+const localLedger = sqliteLocal ? prepareLocalLedger(sqliteDirectory,await storage.getItem('jobs.v1') ?? '[]',sqliteInitialize) : undefined;
 // Cloud providers remain disabled in SQLite local mode. This prepares the
 // persistent state without enabling any external inference or pilot access.
 const cloudState = sqliteCloudState ? prepareCloudState(sqliteDirectory,sqliteCloudInitialize,
@@ -58,8 +59,8 @@ async function executePlan({idea, provider, consent, context}: import('./durable
 function buildJobs(store: typeof storage, isolated: boolean) {
  return createJobs(store,(input,backlog,session)=>executePlan(input,backlog,session,isolated));
 }
-const durableJobs = sqliteLocal ? createDurableLocalJobs(
- prepareLocalLedger(sqliteDirectory,await storage.getItem('jobs.v1') ?? '[]',sqliteInitialize),
+const durableJobs = localLedger ? createDurableLocalJobs(
+ localLedger,
  (input,backlog,session,signal)=>executePlan(input,backlog,session,true,signal),
 ) : undefined;
 const localJobs = durableJobs ?? buildJobs(storage, false);
