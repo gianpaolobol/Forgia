@@ -3,11 +3,13 @@ type Transport = (url: string, init?: RequestInit) => Promise<Response>;
 type Entry = Record<string, unknown>;
 
 export class OpenRouterHttpError extends Error {
-  constructor(path: string, status: number) {
+  constructor(path: string, status: number, retryAfter: string | null = null) {
     super(`OpenRouter ${path}: HTTP ${status}.`);
     this.status = status;
+    this.retryAfter = retryAfter;
   }
   readonly status: number;
+  readonly retryAfter: string | null;
 }
 
 const brands: Record<string, string> = {
@@ -46,7 +48,7 @@ async function get(path: '/models' | '/key', transport: Transport, signal?: Abor
     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     ...(apiKey ? {headers: {Authorization: `Bearer ${apiKey}`}} : {}),
   });
-  if (!response.ok) throw new OpenRouterHttpError(path, response.status);
+  if (!response.ok) throw new OpenRouterHttpError(path, response.status, response.headers.get('retry-after'));
   return object(await response.json()).data;
 }
 
