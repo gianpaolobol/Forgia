@@ -12,10 +12,11 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 const dir=await mkdtemp(join(tmpdir(),'forgia-http-'));
 const session='00000000-0000-0000-0000-000000000001';
 const spec={name:'Catalogo',idea:'Catalogo di prova',kind:'catalog',quiz:false,items:[{name:'A',category:'A',color:''}]};
-let calls=0,child;
+let calls=0,child,rateLimited=false;
 const fake=createServer(async(req,res)=>{
  for await(const _ of req) { /* consume synthetic request */ }
  calls++;
+ if(rateLimited){res.writeHead(429,{'Retry-After':'120'});res.end();return;}
  res.setHeader('content-type','application/json');
  res.end(JSON.stringify({done:true,message:{content:JSON.stringify(spec)}}));
 });
@@ -70,6 +71,20 @@ try{
  await stop();await start({FORGIA_SQLITE_CLOUD_STATE:'1'});
  assert.deepEqual(await wait(id),job);
  assert.equal(calls,2);
+ // Explicit rate-limit refusal: persist the same suspended job and honor
+ // Retry-After across a real process restart. Never contact a cloud provider.
+ rateLimited=true;
+ const started=Date.now();
+ const suspendedResponse=await post('/plan',{...body,idea:'Catalogo quota',provider:'local'},'request-quota');
+ assert.equal(suspendedResponse.status,429);
+ const suspended=await suspendedResponse.json();
+ assert.ok(suspended.id);assert.ok(suspended.nextEligibleAt>=started+120000);
+ const pending=await (await request('/jobs/'+suspended.id)).json();
+ assert.equal(pending.status,'queued');assert.equal(pending.nextEligibleAt,suspended.nextEligibleAt);
+ assert.equal(calls,3);
+ await stop();await start({FORGIA_SQLITE_CLOUD_STATE:'1'});
+ assert.deepEqual(await (await request('/jobs/'+suspended.id)).json(),pending);
+ await delay(800);assert.equal(calls,3);
  await stop();
  // Omitting the state opt-in after bootstrap must fail closed.
  child=spawn(process.execPath,['--experimental-strip-types','server/main.ts'],{cwd:root,env,stdio:'ignore'});

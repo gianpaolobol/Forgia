@@ -123,6 +123,9 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
    const job = await jobs.read(receipt.id);
    if (job?.status === 'done') {res.end(JSON.stringify(job.result));return;}
    if (!job || job.status === 'failed') throw Object.assign(Error(job?.error ?? 'Lavoro non trovato.'), {status: job?.statusCode});
+   if ('nextEligibleAt' in job && typeof job.nextEligibleAt === 'number' && job.nextEligibleAt > Date.now()) {
+    return reply(res,429,{error:'Lavoro sospeso per quota.',id:receipt.id,nextEligibleAt:job.nextEligibleAt});
+   }
    await new Promise(resolve => setTimeout(resolve, 250));
   }
  } catch (error) {

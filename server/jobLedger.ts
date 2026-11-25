@@ -14,6 +14,11 @@ export function openJobLedger(path: string) {
       status TEXT NOT NULL CHECK(status IN ('queued','claimed','dispatched','done','failed','uncertain')),
       fence INTEGER NOT NULL DEFAULT 0, worker TEXT, expires INTEGER, result TEXT,
       UNIQUE(session, request_key)
+    );
+    CREATE TABLE IF NOT EXISTS forgia_job_deferral_v1 (
+      id TEXT PRIMARY KEY REFERENCES forgia_jobs_v1(id),
+      next_eligible_at INTEGER NOT NULL CHECK(next_eligible_at>=0),
+      attempts INTEGER NOT NULL CHECK(attempts BETWEEN 1 AND 2)
     );`);
   const q = (sql: string) => db.prepare(sql);
   function tx<T>(fn: () => T): T {
@@ -70,7 +75,7 @@ export function openJobLedger(path: string) {
       if (typeof worker !== 'string' || !worker) throw Error('Worker non valido.');
       return tx(() => {
         recover(now);
-        const row = q("SELECT id FROM forgia_jobs_v1 WHERE status='queued' ORDER BY rowid LIMIT 1").get();
+        const row = q("SELECT j.id FROM forgia_jobs_v1 j LEFT JOIN forgia_job_deferral_v1 d ON d.id=j.id WHERE j.status='queued' AND (d.id IS NULL OR d.next_eligible_at<=?) ORDER BY j.rowid LIMIT 1").get(now);
         if (!row) return null;
         q("UPDATE forgia_jobs_v1 SET status='claimed', fence=fence+1, worker=?, expires=? WHERE id=?").run(worker,until,row.id);
         return q('SELECT * FROM forgia_jobs_v1 WHERE id=?').get(row.id) as unknown as Row;
@@ -78,6 +83,26 @@ export function openJobLedger(path: string) {
     },
     failClaim(lease: Lease, now: number, result: string) { return transition(lease,now,'claimed','failed',result); },
     markUncertain(lease: Lease, now: number) { return transition(lease,now,'dispatched','uncertain',null); },
+    deferQuota(lease: Lease, now: number, nextEligibleAt: number): 'deferred' | 'exhausted' | 'lease-lost' {
+      validateNow(now); validateLease(lease);
+      if (!Number.isSafeInteger(nextEligibleAt) || nextEligibleAt <= now || nextEligibleAt > 253402300799999) throw Error('Deadline quota non valida.');
+      return tx(() => {
+        const active = q("SELECT 1 FROM forgia_jobs_v1 WHERE id=? AND fence=? AND worker=? AND expires>? AND status='dispatched'").get(lease.id,lease.fence,lease.worker,now);
+        if (!active) return 'lease-lost';
+        const previous = q('SELECT attempts FROM forgia_job_deferral_v1 WHERE id=?').get(lease.id);
+        const attempts = Number(previous?.attempts ?? 0);
+        if (attempts >= 2) {
+          return transition(lease,now,'dispatched','failed',JSON.stringify({error:'Limite riprese automatiche raggiunto.',statusCode:429})) ? 'exhausted' : 'lease-lost';
+        }
+        q("UPDATE forgia_jobs_v1 SET status='queued',worker=NULL,expires=NULL,result=NULL WHERE id=?").run(lease.id);
+        q('INSERT INTO forgia_job_deferral_v1(id,next_eligible_at,attempts) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET next_eligible_at=excluded.next_eligible_at,attempts=excluded.attempts').run(lease.id,nextEligibleAt,attempts+1);
+        return 'deferred';
+      });
+    },
+    deferredUntil(id: string): number | undefined {
+      const row=q("SELECT d.next_eligible_at AS deadline FROM forgia_job_deferral_v1 d JOIN forgia_jobs_v1 j ON j.id=d.id WHERE j.id=? AND j.status='queued'").get(id);
+      return row ? Number(row.deadline) : undefined;
+    },
     markDispatched(lease: Lease, now: number) { return transition(lease,now,'claimed','dispatched',null); },
     heartbeat(lease: Lease, now: number, ttl: number) {
       const until = expiry(now,ttl);
