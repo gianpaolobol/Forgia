@@ -2,7 +2,8 @@ import {createHash,randomUUID} from 'node:crypto';
 import {closeSync,constants,fstatSync,fsyncSync,lstatSync,mkdirSync,openSync,readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import type {openSuperhandyLedger} from './superhandyLedger.ts';
-type Ledger=Pick<ReturnType<typeof openSuperhandyLedger>,'claim'|'dispatch'|'recordReceipt'|'submit'>;
+import type {LocalSpecAuthorization} from './superhandyGrant.ts';
+type Ledger=Pick<ReturnType<typeof openSuperhandyLedger>,'claim'|'dispatch'|'recordReceipt'|'submit'|'inspect'>;
 type LocalProvider='local'|'llamacpp';
 const origin='http://127.0.0.1:8787';
 const hash=(text:string)=>createHash('sha256').update(text).digest('hex');
@@ -31,7 +32,7 @@ async function json(response:Response,limit=4*1024*1024):Promise<unknown>{
 // specification, never executes generated code or represents an authenticated AI.
 export async function runLocalSpec(ledger:Ledger,options:{
  actor:string;taskId:string;provider:LocalProvider;artifactDir:string;
- verifySpec:(value:unknown)=>unknown;transport?:typeof fetch;pollMs?:number;timeoutMs?:number;
+ verifySpec:(value:unknown)=>unknown;transport?:typeof fetch;pollMs?:number;timeoutMs?:number;authorization?:LocalSpecAuthorization;
 }){
  if(options.taskId.startsWith('portfolio-'))throw Error('Task di riconciliazione portafoglio: usare il flusso manuale, non AppSpec.');
  if(!['local','llamacpp'].includes(options.provider))throw Error('Solo provider locale esplicito.');
@@ -45,33 +46,39 @@ export async function runLocalSpec(ledger:Ledger,options:{
  if(!record(provider)||typeof provider.model!=='string'||!provider.model)throw Error('Provider locale non configurato.');
  requirePrivateDirectory(options.artifactDir);
  const dir=options.artifactDir;
- signal.throwIfAborted();
+ const scope={baselineSha:options.authorization?ledger.inspect().baselineSha:'',actor:options.actor,taskId:options.taskId,provider:options.provider,model:provider.model};
+ const grantDigest=options.authorization?.(scope);
+ if(options.authorization&&(typeof grantDigest!=='string'||!/^[a-f0-9]{64}$/.test(grantDigest)))throw Error('Digest grant non valido.');
+ const checkGrant=()=>{if(options.authorization&&options.authorization(scope,grantDigest)!==grantDigest)throw Error('Grant Superhandy modificato.');};
+ signal.throwIfAborted();checkGrant();
  const work=ledger.claim(options.actor,300000,options.taskId);
  if(!work)return {status:'idle' as const};
  const {lease,task,baselineSha}=work;
+ if(options.authorization&&(baselineSha!==scope.baselineSha||task.id!==scope.taskId||lease.actor!==scope.actor))throw Error('Scope Superhandy modificato.');
  const tag=baselineSha+'-'+task.id+'-'+lease.fence;
  const session=randomUUID(),requestKey='sh:'+tag;
  // Persist intent before the fenced dispatch. A failed or ambiguous POST is
  // never repeated by this bridge; the lease eventually becomes uncertain.
- const intentEvidence=persist(dir,tag+'.intent.json',{baselineSha,task:task.id,fence:lease.fence,actor:lease.actor,session,requestKey,provider:options.provider,model:provider.model});
- signal.throwIfAborted();
+ const intentEvidence=persist(dir,tag+'.intent.json',{baselineSha,task:task.id,fence:lease.fence,actor:lease.actor,session,requestKey,provider:options.provider,model:provider.model,...(grantDigest?{grantDigest}:{})});
+ signal.throwIfAborted();checkGrant();
  ledger.dispatch(lease,intentEvidence);
+ checkGrant();
  const receipt=await json(await request('/jobs',{method:'POST',headers:{'content-type':'application/json','idempotency-key':requestKey},body:JSON.stringify({session,provider:options.provider,idea:task.criterion,cloudConsent:false,kind:'catalog',phase:'draft'})}),65536);
  if(!record(receipt)||typeof receipt.id!=='string'||!uuid.test(receipt.id))throw Error('Ricevuta gateway non valida: non ripetere.');
  const jobId=receipt.id;
  const receiptEvidence=persist(dir,tag+'.receipt.json',{jobId,session,requestKey});
  ledger.recordReceipt(lease,receiptEvidence);
  for(;;){
-  signal.throwIfAborted();
+  signal.throwIfAborted();checkGrant();
   const job=await json(await request('/jobs/'+jobId));
-  if(!record(job))throw Error('Stato gateway non valido.');
+  checkGrant();if(!record(job))throw Error('Stato gateway non valido.');
   if(job.status==='done'){
    const result=job.result;
    if(!record(result)||!record(result.routing)||result.routing.provider!==options.provider||result.routing.model!==provider.model)throw Error('Risultato non corrispondente al provider autorizzato.');
    const spec=options.verifySpec(result.spec);
-   signal.throwIfAborted();
+   signal.throwIfAborted();checkGrant();
    const evidence=persist(dir,tag+'.result.json',{baselineSha,task:task.id,fence:lease.fence,jobId,provider:options.provider,model:provider.model,spec});
-   ledger.submit(lease,evidence);
+   checkGrant();ledger.submit(lease,evidence);
    return {status:'submitted' as const,jobId,evidence};
   }
   if(job.status==='failed')throw Error('Lavoro gateway fallito: verificare la ricevuta, non ripetere.');
@@ -110,7 +117,7 @@ function persistResult(dir:string,name:string,value:unknown){
 // Resume only by receipt, never by re-submitting the prompt. An expired
 // Superhandy lease can be reconciled, but the reviewer still must accept.
 export async function resumeLocalSpec(ledger:Pick<ReturnType<typeof openSuperhandyLedger>,'inspect'|'reconcile'>,options:{
- actor:string;taskId:string;artifactDir:string;verifySpec:(value:unknown)=>unknown;transport?:typeof fetch;
+ actor:string;taskId:string;artifactDir:string;verifySpec:(value:unknown)=>unknown;transport?:typeof fetch;authorization?:LocalSpecAuthorization;
 }){
  if(options.taskId.startsWith('portfolio-'))throw Error('Task di riconciliazione portafoglio: usare il flusso manuale, non AppSpec.');
  requirePrivateDirectory(options.artifactDir);
@@ -126,18 +133,24 @@ export async function resumeLocalSpec(ledger:Pick<ReturnType<typeof openSuperhan
  const receipt:unknown=JSON.parse(receiptBody);
  if(!record(intent)||intent.baselineSha!==state.baselineSha||intent.task!==options.taskId||intent.fence!==row.fence||intent.actor!==options.actor||typeof intent.session!=='string'||!uuid.test(intent.session)||intent.requestKey!=='sh:'+tag||!['local','llamacpp'].includes(String(intent.provider))||typeof intent.model!=='string'||!intent.model)throw Error('Intento non corrispondente.');
  if(!record(receipt)||receipt.session!==intent.session||receipt.requestKey!==intent.requestKey||typeof receipt.jobId!=='string'||!uuid.test(receipt.jobId))throw Error('Ricevuta non corrispondente.');
+ const grantDigest=intent.grantDigest;
+ if(grantDigest!==undefined&&(typeof grantDigest!=='string'||!/^[a-f0-9]{64}$/.test(grantDigest)))throw Error('Digest grant non valido.');
+ if((grantDigest!==undefined)!==Boolean(options.authorization))throw Error('Ripresa richiede il grant originale, se registrato.');
+ const scope={baselineSha:state.baselineSha,actor:options.actor,taskId:options.taskId,provider:String(intent.provider),model:intent.model};
+ const checkGrant=()=>{if(options.authorization&&options.authorization(scope,grantDigest as string)!==grantDigest)throw Error('Grant Superhandy modificato.');};
+ checkGrant();
  const jobId=receipt.jobId,transport=options.transport??fetch,signal=AbortSignal.timeout(15000);
  const request=(path:string)=>transport(origin+path,{method:'GET',signal,redirect:'error'});
  const meta=await json(await request('/providers'),65536);
  if(!record(meta)||meta.mode!=='free-only'||meta.localDevelopmentOnly!==true||meta.durableLocal!==true)throw Error('Gateway SQLite loopback richiesto.');
- const job=await json(await request('/jobs/'+jobId));
- if(!record(job))throw Error('Stato gateway non valido.');
+ checkGrant();const job=await json(await request('/jobs/'+jobId));
+ checkGrant();if(!record(job))throw Error('Stato gateway non valido.');
  if(job.status==='queued'||job.status==='running')return {status:'pending' as const,jobId,...(typeof job.nextEligibleAt==='number'?{nextEligibleAt:job.nextEligibleAt}:{})};
  if(job.status!=='done')throw Error('Lavoro gateway non concluso con successo: non ripetere.');
  const result=job.result;
  if(!record(result)||!record(result.routing)||result.routing.provider!==intent.provider||result.routing.model!==intent.model)throw Error('Risultato non corrispondente al dispatch.');
- const spec=options.verifySpec(result.spec);signal.throwIfAborted();
+ const spec=options.verifySpec(result.spec);signal.throwIfAborted();checkGrant();
  const evidence=persistResult(dir,tag+'.result.json',{baselineSha:state.baselineSha,task:options.taskId,fence:row.fence,jobId,provider:intent.provider,model:intent.model,spec});
- ledger.reconcile({id:options.taskId,actor:options.actor,fence:row.fence},evidence);
+ checkGrant();ledger.reconcile({id:options.taskId,actor:options.actor,fence:row.fence},evidence);
  return {status:'submitted' as const,jobId,evidence};
 }

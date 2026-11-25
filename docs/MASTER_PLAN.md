@@ -223,3 +223,7 @@ accesso al gateway; I5 CLI produce JSON installabile nel ledger.
 Non è assegnazione automatica a sviluppatori, autenticazione o verifica
 indipendente. Inventario effettivo di ogni repo, adapter e grant reali,
 UI e validazione finale restano pendenti. RV-01 non assegnato, nessun merge.
+
+
+## Addendum v0.28 — F07/F08 policy di dispatch locale
+Base #39 2676fdbe2; issue #40, perimetro locale senza endpoint aggiuntivi. RV-01 ancora pendente. Criteri G1 scope esatto e scadenza; G2 privacy file POSIX/symlink; G3 verifica fresca a ogni controllo e digest immutabile per processo; G4 digest legato al dispatch e ripresa originale GET-only; G5 revoca prima del POST o prima della consegna; G6 compatibilità CLI manuale; G7 processi CLI, SQLite su disco e HTTP loopback sintetico. Autocontrollo G1–G6 10/10 + H1–H9 9/9, G7 PASS, typecheck isolato PASS. Non promuovere a F08 completo: auth vera, policy gateway/worker e nodi remoti, revoca attiva durante inferenza, ACL Windows, validazione indipendente e provider reali ancora richiesti. Continuare con BSH11/B5/S4/A8/U4/M6/M7 e consolidamento UI/CI; evitare nuove microfeature se è possibile collaudare i flussi cumulativi.
