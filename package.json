@@ -11,7 +11,8 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "api": "node --experimental-strip-types server/main.ts",
     "export:web": "expo export --platform web",
-    "test:ui": "playwright test"
+    "test:ui": "playwright test",
+    "portfolio": "node --experimental-strip-types scripts/master-portfolio.ts"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
