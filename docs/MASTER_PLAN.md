@@ -1,4 +1,4 @@
-# Forgia V1.0 — piano maestro v0.10
+# Forgia V1.0 — piano maestro v0.11
 Data: 2026-11-24. Stato: proposta, NON approvata da revisore indipendente. Revisore logico previsto: RV-01; identità/modello/sessione da registrare all'assegnazione. Non equiparare questo autore a un secondo agente. La baseline resta da revisionare; in modalità C sono consentite implementazioni reversibili su branch isolati, senza approvazione definitiva.
 
 ## Inventario verificato su GitHub
@@ -99,3 +99,7 @@ Base PR #10 382f81ac. Modalità C, RV-01 pendente. Validare l'intero snapshot ac
 
 ## Addendum v0.10 — R11a/F04/F07 (25 novembre 2026)
 Base #11 5c4686f, modalità C; RV-01 pendente. Distinguere esclusione per quota/riserva da nessun candidato compatibile, 401/403 upstream, 502 risposta non valida, 503 rete/servizio, 504 timeout. Solo quota effettiva/riserva o tutti i tentativi in quota producono 429; errori misti mantengono una causa non quota con priorità deterministica. Nessun retry dello stesso provider; fallback gratuito consentito invariato; errori storage/policy non tipizzati interrompono. Messaggi aggregati fissi, nessun contenuto upstream sensibile. Conservare status noti nella coda/API (non confondere 401 del pilota con l'esito asincrono del job); R09 sospensione durevole e R10 quota atomica restano aperti. Test: nessun provider, consenso negato, contesto troppo grande, quota/riserva, auth, rete, risposta invalida, timeout, errori misti, fallback riuscito e storage. Test classificatore isolato e integrazione gateway; CI completa e revisione RV-01 necessarie. Autocontrollo non indipendente.
+
+
+## Addendum v0.11 — F05a, 25 novembre 2026
+Base PR #12 b651b8f2, modalità C, RV-01 pendente. Primo incremento applicativo isolato del registro job SQLite (Node 24 previsto, Node 22 disponibile per test): enqueue atomico con limiti globali/sessione e dedup immutabile del payload; claim e fencing monotono per job; lease con scadenza; marker persistito prima del dispatch; recupero di claim non inviato, terminale incerto per dispatch scaduto, nessun replay automatico; heartbeat e completamento solo del lease attivo. Test DB temporaneo, due connessioni, riapertura, chiave conflittuale, scadenza, stale worker e limiti. Non collegare ancora al gateway live: F05b migrazione JSON, integrazione coda e quote atomiche, revoca e test multiprocesso/Windows restano obbligatori. Nessun nuovo servizio o costo. Revisione indipendente e CI finale non sostituite da autocontrollo.
