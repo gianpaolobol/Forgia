@@ -1,4 +1,4 @@
-# Forgia V1.0 — piano maestro v0.8
+# Forgia V1.0 — piano maestro v0.9
 Data: 2026-11-24. Stato: proposta, NON approvata da revisore indipendente. Revisore logico previsto: RV-01; identità/modello/sessione da registrare all'assegnazione. Non equiparare questo autore a un secondo agente. La baseline resta da revisionare; in modalità C sono consentite implementazioni reversibili su branch isolati, senza approvazione definitiva.
 
 ## Inventario verificato su GitHub
@@ -92,3 +92,7 @@ Autorizzazione esplicita del titolare, AGENTS.md 30671e65418cf240993d4eadd6e45f0
 
 ## Addendum v0.8 — R08/F09 separazione profili (25 novembre 2026)
 Baseline #9 a2d329cd, #8 a747090a. Modalità C: implementazione reversibile, RV-01 non approvato. Dipende da F02/R04. Task R08a: disattivare connessione pilota standard iOS/Android anche con URL valorizzato; iOS opt-in preesistente con indirizzo privato modificabile, Android opt-in nuovo con CA e origine HTTPS privata obbligatorie in configurazione build. Web resta loopback. Test: flag mancanti/0, URL pubblico/privato, flag per altra piattaforma, URL/CA mancanti e forme ambigue, iOS senza URL, web con flag. R08b: CI per ramo integrato e verifica bundle/config reali, build e test su dispositivi, ancora aperto. Non cambiare workflow o attivare provider in R08a. Autocontrollo: due validatori (config JS, runtime TS) da confrontare con test, non equivalgono a review indipendente. Gate finali invariati.
+
+
+## Addendum v0.9 — R07a/F08/F09 (25 novembre 2026)
+Base PR #10 382f81ac. Modalità C, RV-01 pendente. Validare l'intero snapshot account prima di associare un token; rifiutare qualsiasi ID o digest duplicato anche se scaduto, campi invalidi e timestamp UTC non canonici; lista vuota valida (revoca totale). Validazione all'avvio e ad ogni richiesta autenticata, senza cache permissiva. Errori di configurazione generici senza dati sensibili. Matrice: identità distinte, scadenza esatta, revoca, digest condiviso in entrambi gli ordini, ID duplicato con digest differente, voce malformata, snapshot corretto dopo errore, data impossibile. Dipende da R04/R08a. Non risolve R03 (revoca dopo accodamento), né prova TLS o file replacement concorrente; test integrati e RV-01 restano necessari. Autocontrollo non indipendente.
