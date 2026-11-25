@@ -62,6 +62,7 @@ export function createDurableLocalJobs(ledger: Ledger, run: (input: DurableInput
       if (!durableModelAllowed(JSON.parse(payload),modelFor)) throw Object.assign(Error('Modello locale non corrispondente al pin.'),{status:409});
       return {id:ledger.enqueue(session,requestKey??null,payload)};
     },
+    findReceipt(session:unknown,key:unknown) { return ledger.findReceipt(session,key); },
     async read(id: string, session?: string) {
       const row=session===undefined?ledger.readLocal(id):ledger.read(id,session);
       if (!row) return null;

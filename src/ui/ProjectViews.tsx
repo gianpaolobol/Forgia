@@ -54,9 +54,9 @@ export function Detail({w}: {w: Workspace}) {
     </View>)}
     {!w.liveAI && <Text style={s.small}>L’AI è disponibile nel pannello web locale. I messaggi scritti qui restano su questo dispositivo.</Text>}
     {!!w.jobStatus && <Tag>{w.jobStatus}</Tag>}
-    {w.liveAI && last?.role === 'user' && !w.busy && (!job || job.state === 'accepted') &&
-      <Button secondary onPress={w.retry}>{job ? 'Riprendi lavoro AI' : 'Riprova con l’AI'}</Button>}
-    {job?.state === 'submitting' && <Text style={s.small}>Invio non confermato: verifica il gateway. Forgia non ripete automaticamente la richiesta.</Text>}
+    {w.liveAI && last?.role === 'user' && !w.busy && (!job || job.state === 'accepted' || w.canLookupReceipt) &&
+      <Button secondary onPress={w.retry}>{job?.state === 'submitting' ? 'Cerca ricevuta AI' : job ? 'Riprendi lavoro AI' : 'Riprova con l’AI'}</Button>}
+    {job?.state === 'submitting' && <Text style={s.small}>Invio non confermato: sul gateway SQLite locale puoi cercare la ricevuta. Forgia non ripete automaticamente la richiesta.</Text>}
     {job?.state === 'accepted' && <Text style={s.small}>Ricevuta salvata. Riprendi il lavoro sul gateway originale.</Text>}
     {pending && !w.busy && <Button secondary onPress={w.abandonJob}>Abbandona il recupero (non annulla il lavoro)</Button>}
     {project.spec?.kind === 'catalog' && <>
