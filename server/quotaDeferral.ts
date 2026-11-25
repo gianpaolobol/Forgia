@@ -28,8 +28,8 @@ export class ProviderError extends Error {
 }
 export class QuotaDeferral extends ProviderError {
   readonly nextEligibleAt: number;
-  constructor(nextEligibleAt: number) {
-    super('Quota o riserva raggiunta: lavoro sospeso.', 429);
+  constructor(nextEligibleAt: number, message = 'Quota o riserva raggiunta: lavoro sospeso.') {
+    super(message, 429);
     if (!Number.isSafeInteger(nextEligibleAt) || nextEligibleAt < 0 || nextEligibleAt > MAX_RETRY_DEADLINE) throw Error('Deadline quota non valida.');
     this.nextEligibleAt = nextEligibleAt;
   }

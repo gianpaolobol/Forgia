@@ -36,7 +36,7 @@ const LLAMA_SPEC_SCHEMA = {
 async function payload(r:Response):Promise<any>{
  // Only an actual HTTP 429 response, not an arbitrary transport exception,
  // establishes an explicit refusal. No quota grant is refunded.
- if(r.status===429)throw new QuotaDeferral(retryDeadline(r.headers.get('retry-after')));
+ if(r.status===429)throw new QuotaDeferral(retryDeadline(r.headers.get('retry-after')), 'Quota gratuita esaurita: lavoro sospeso.');
  if(!r.ok)throw new ProviderError(`Servizio AI non disponibile (${r.status}).`,r.status);
  const raw=await r.text();if(raw.length>1_000_000)throw new ProviderError('Risposta troppo grande.', 502);
  try { return JSON.parse(raw); } catch { throw new ProviderError('Risposta del servizio AI non valida.', 502); }

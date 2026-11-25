@@ -167,7 +167,7 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache,l
         }
         return Math.max(cooldownUntil(p.id), (state.counts[p.id]??0)>=limit(p)-(p.mode==='free'?reserve:0)?nextUtcDay():retryDeadline(null));
       });
-      throw new QuotaDeferral(Math.max(...deadlines));
+      throw new QuotaDeferral(Math.max(...deadlines),'Nessun motore gratuito disponibile: quota o riserva raggiunta.');
     }
     throw new ProviderError('Nessun motore gratuito compatibile: verifica configurazione, consenso e capacità.',503);
    }

@@ -59,7 +59,7 @@ test('S3 stale lease cannot defer or change uncertain outcome',t=>{
   assert.equal(db.read(id,session)?.status,'uncertain');
 });
 
-test('S4 provider cooldown shared across jobs and processes, survives reopen without shortening',t=>{
+test('S4 provider cooldown shared across connections, survives reopen without shortening',t=>{
   const dir=mkdtempSync(join(tmpdir(),'forgia-cooldown-'));
   const path=join(dir,'jobs.db');const db=openJobLedger(path);
   t.after(()=>{db.close();rmSync(dir,{recursive:true,force:true});});

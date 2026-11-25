@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createGateway} from '../server/gateway.ts';
 import {createProvider, ProviderError, type Provider} from '../server/providers.ts';
+import {QuotaDeferral} from '../server/quotaDeferral.ts';
 import {parseFit, rankProviders, routingContext} from '../server/routing.ts';
 
 const sample = {name:'Erbario', idea:'Catalogo di piante', kind:'catalog', quiz:false,
@@ -115,4 +116,21 @@ test('llama.cpp e Cloudflare rispettano endpoint e modalità gratuita', async ()
     return Response.json({success:true,result:{response:'{}'}});
   });
   assert.equal(await cf.complete('Idea', signal), '{}');
+});
+
+test('R09 explicit HTTP quota refusals defer but mixed/unknown effects do not',async()=>{
+ const context=routingContext('catalog','draft');
+ const now=Date.now();let calls=0;
+ const local=createProvider({id:'local',model:'fixture-local'},async()=>{
+  calls++;return new Response(null,{status:429,headers:{'Retry-After':'120'}});
+ });
+ await assert.rejects(createGateway(memory()).planAuto('Idea',[local],false,context),
+  (e:unknown)=>e instanceof QuotaDeferral&&e.nextEligibleAt>=now+120000);
+ assert.equal(calls,1);
+ const unknown=fixture('llamacpp',[],{mode:'local',async complete(){throw new ProviderError('Unknown effect',503);}});
+ await assert.rejects(createGateway(memory()).planAuto('Idea',[local,unknown],false,context),
+  (e:unknown)=>e instanceof ProviderError&&!(e instanceof QuotaDeferral)&&e.status===503);
+ const ambiguous=fixture('local',[],{async complete(){throw new ProviderError('Unknown rate error',429);}});
+ await assert.rejects(createGateway(memory()).planAuto('Idea',[ambiguous],false,context),
+  (e:unknown)=>e instanceof ProviderError&&!(e instanceof QuotaDeferral)&&e.status===429);
 });
