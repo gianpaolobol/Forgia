@@ -4,10 +4,12 @@ import type {Storage} from '../src/core/storage.ts';
 import {ProviderError, localProvider, providerIds, type Provider} from './providers.ts';
 import {rankProviders, type RoutingContext} from './routing.ts';
 import {normalizeRoutingStatus, summarizeRoutingFailure, type RoutingFailureStatus} from './routingFailure.ts';
+import type {openQuotaLedger} from './quotaLedger.ts';
+type QuotaLedger = ReturnType<typeof openQuotaLedger>;
 type SpecCache = Record<string, AppSpec>;
 interface State {version:1;day:string;counts:Record<string,number>;cache:SpecCache;pilotCache:SpecCache}
 const queues=new WeakMap<Storage,Promise<unknown>>();
-export function createGateway(store:Storage,{dailyLimit}:{dailyLimit?:number}={}){
+export function createGateway(store:Storage,{dailyLimit,quotaLedger}:{dailyLimit?:number;quotaLedger?:QuotaLedger}={}){
  if(dailyLimit!==undefined&&(!Number.isSafeInteger(dailyLimit)||dailyLimit<1||dailyLimit>100))throw Error('Quota locale non valida.');
  async function load():Promise<State>{
   const raw=await store.getItem('gateway.v1'),day=new Date().toISOString().slice(0,10);
@@ -35,12 +37,36 @@ export function createGateway(store:Storage,{dailyLimit}:{dailyLimit?:number}={}
 
  const limit = (provider: Provider) => dailyLimit ?? (provider.mode === 'local' ? Infinity : 20);
  const cooldowns = new Map<string, number>();
- async function attempt(prompt: string, provider: Provider, consent: boolean, state: State, signal: AbortSignal, scope?: string) {
+ const cloudLimit = Math.min(dailyLimit ?? 20,20);
+ // Opt-in only: every cloud caller must share the initialized ledger after an offline cutover.
+ // The legacy JSON cloud cache/counters are not authoritative in this mode.
+ async function attemptSqliteCloud(prompt:string, provider:Provider, signal:AbortSignal, reserve:number) {
+  const before = quotaLedger!.read(provider.id);
+  if (before.cooldownUntil > Date.now() || before.used >= cloudLimit-reserve) throw new ProviderError('Quota o riserva raggiunta: lavoro sospeso.',429);
+  if (!await provider.eligible(signal)) throw new ProviderError('Fornitore gratuito non verificato.',403);
+  signal.throwIfAborted();
+  const grant = quotaLedger!.reserve(provider.id,cloudLimit,reserve);
+  if (!grant.granted) throw new ProviderError('Quota o riserva raggiunta: lavoro sospeso.',429);
+  signal.throwIfAborted(); // Never refund a committed grant, even before dispatch.
+  let output:string;
+  try { output = await provider.complete(prompt,signal); }
+  catch (error) {
+   if (error instanceof ProviderError && error.status===429) quotaLedger!.cooldown(provider.id,Date.now()+60_000);
+   throw error;
+  }
+  signal.throwIfAborted();
+  let spec:AppSpec;
+  try { spec=validateSpec(JSON.parse(output)); }
+  catch { throw new ProviderError('Il modello ha restituito una specifica non valida.',502); }
+  return {spec,cached:false,requestsUsed:grant.used};
+ }
+ async function attempt(prompt: string, provider: Provider, consent: boolean, state: State, signal: AbortSignal, scope?: string, reserve = 0) {
   if (!providerIds.includes(provider.id) || !['local', 'free'].includes(provider.mode)) {
    throw Error('Fornitore non supportato in modalità gratuita.');
   }
   if (localProvider(provider.id) !== (provider.mode === 'local')) throw Error('Modalità gratuita incoerente.');
   if (provider.mode !== 'local' && !consent) throw Error('Serve il consenso all’invio al fornitore cloud selezionato.');
+  if (quotaLedger && provider.mode === 'free') return attemptSqliteCloud(prompt,provider,signal,reserve);
   const key = createHash('sha256').update(JSON.stringify(scope ? [scope, provider.id, provider.model, prompt] : [provider.id, provider.model, prompt])).digest('hex');
   const used = state.counts[provider.id] ?? 0;
   const cache = scope ? state.pilotCache : state.cache;
@@ -94,7 +120,14 @@ export function createGateway(store:Storage,{dailyLimit}:{dailyLimit?:number}={}
    const deadline = AbortSignal.timeout(90000);
    const prompt = text(idea, 'Idea', 8000);
    const state = await load();
-   const remaining = Object.fromEntries(providers.map(p => [p.id, (cooldowns.get(p.id) ?? 0) > Date.now() ? 0 : limit(p) - (state.counts[p.id] ?? 0)]));
+   const remaining = Object.fromEntries(providers.map(p => {
+    if (quotaLedger && p.mode==='free' && providerIds.includes(p.id) && !localProvider(p.id) && consent) {
+     const current=quotaLedger.read(p.id);
+     return [p.id,current.cooldownUntil>Date.now()?0:cloudLimit-current.used];
+    }
+    return [p.id,(cooldowns.get(p.id) ?? 0)>Date.now()?0:limit(p)-(state.counts[p.id]??0)];
+   }));
+   const reserve = backlog>=0 && context.kind==='catalog' && context.phase==='draft' && Buffer.byteLength(prompt)<=2000 ? Math.min(cloudLimit,backlog>=2?8:4) : 0;
    const ranked = rankProviders(providers, context, prompt, consent, remaining, backlog);
    if (!ranked.length) {
     // Re-rank without quota constraints to distinguish a quota exclusion from policy/capability.
@@ -113,7 +146,7 @@ export function createGateway(store:Storage,{dailyLimit}:{dailyLimit?:number}={}
      break;
     }
     try {
-     const result = await attempt(prompt, provider, consent, state, AbortSignal.any([deadline, AbortSignal.timeout(provider.mode === "local" ? 45000 : 14000)]), scope);
+     const result = await attempt(prompt, provider, consent, state, AbortSignal.any([deadline, AbortSignal.timeout(provider.mode === "local" ? 45000 : 14000)]), scope, reserve);
      return {...result, routing: {provider: provider.id, model: provider.model, reason, skipped}};
     } catch (error) {
      // Remote errors may permit a free fallback. Storage and policy errors stop the request.
