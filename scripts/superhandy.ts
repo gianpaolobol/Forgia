@@ -1,7 +1,7 @@
 import {lstatSync,mkdirSync,openSync,closeSync,readFileSync,statSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {openSuperhandyLedger,validateBaseline} from '../server/superhandyLedger.ts';
-import {runLocalSpec,prepareSuperhandyArtifacts} from '../server/superhandyBridge.ts';
+import {runLocalSpec,resumeLocalSpec,prepareSuperhandyArtifacts} from '../server/superhandyBridge.ts';
 import {validateSpec} from '../src/core/spec.ts';
 const [command,archive,...args]=process.argv.slice(2);
 function privatePath(path:string,directory=false,optional=false){
@@ -9,8 +9,8 @@ function privatePath(path:string,directory=false,optional=false){
  catch(e){if(!optional||(e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}
 }
 async function main(){
- if(!archive||!/^[a-z][a-z0-9_-]{0,63}$/.test(archive)||!['init','approve','claim','dispatch','heartbeat','handoff','submit','review','inspect','run-local-spec'].includes(command))throw Error('Comando o archivio non valido.');
- const counts:Record<string,number>={init:1,approve:3,claim:1,dispatch:1,heartbeat:2,handoff:2,submit:2,review:5,inspect:0,'run-local-spec':3};
+ if(!archive||!/^[a-z][a-z0-9_-]{0,63}$/.test(archive)||!['init','approve','claim','dispatch','heartbeat','handoff','submit','review','inspect','run-local-spec','resume-local-spec'].includes(command))throw Error('Comando o archivio non valido.');
+ const counts:Record<string,number>={init:1,approve:3,claim:1,dispatch:1,heartbeat:2,handoff:2,submit:2,review:5,inspect:0,'run-local-spec':3,'resume-local-spec':2};
  if(args.length!==counts[command])throw Error('Numero argomenti non valido.');
  const input=command==='init'?(statSync(args[0]).size>1024*1024?(()=>{throw Error('Piano troppo grande.');})():validateBaseline(JSON.parse(readFileSync(args[0],'utf8')))):undefined;
  const root=resolve(process.env.FORGIA_DATA_DIR||'.data');privatePath(root,true);
@@ -29,6 +29,7 @@ async function main(){
   case 'submit':return ledger.submit(JSON.parse(args[0]),args[1]);
   case 'review':return ledger.review(args[0],args[1],args[2],args[3] as 'accept'|'reject',args[4]);
   case 'inspect':return ledger.inspect();
+  case 'resume-local-spec':return await resumeLocalSpec(ledger,{actor:args[0],taskId:args[1],artifactDir:prepareSuperhandyArtifacts(dir,archive),verifySpec:validateSpec});
   case 'run-local-spec':{
    const [actor,taskId,provider]=args;
    if(provider!=='local'&&provider!=='llamacpp')throw Error('Provider locale esplicito richiesto.');
