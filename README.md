@@ -106,3 +106,7 @@ Il candidato su SQLite mantiene lo stesso ID dei job con rifiuto quota esplicito
 ## Master Portfolio Orchestrator
 
 [Import del piano, backlog e catalogo OpenRouter](docs/MASTER_PORTFOLIO.md).
+
+
+### Revoca dei tester (candidato F08/R03)
+Il pilota HTTPS preesistente associa ogni lavoro alla specifica autorizzazione (identità, impronta del token e scadenza); nessun token in chiaro viene scritto nella coda. Al dispatch e prima del risultato rilegge la lista dei tester; durante l'esecuzione verifica periodicamente e annulla al primo diniego rilevato. Gli invii già effettuati non sono reversibili; una revoca transitoria fra due controlli potrebbe non essere osservata. Cambiare token o scadenza crea un nuovo grant: i job/cache precedenti non sono riutilizzati. Prima dell'aggiornamento arrestare i gateway e conservare backup offline dei dati del pilota: i job legacy senza grant non saranno accessibili o rieseguiti dal nuovo pilota. Il candidato non attiva HTTPS, LAN o cloud, non è un backend multiutente e non amplia l'accesso SQLite oltre loopback. Collaudo HTTPS e revisione ancora pendenti.
