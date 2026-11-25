@@ -107,3 +107,17 @@ Base PR #12 b651b8f2, modalità C, RV-01 pendente. Primo incremento applicativo 
 
 ## Addendum v0.12 — F05b.1, 25 novembre 2026
 Baseline PR #13 e86ee2ad; modalità C, RV-01 pendente. Prima del collegamento al gateway, rendere verificabile il recupero senza claim, validare timestamp e token lease in tutte le transizioni e liberare metadata lease terminali. Matrice: clock NaN/negativo/frazionario/overflow rifiutato senza mutazione; claim simultaneo di processi distinti => un solo vincitore; kill del processo dopo dispatch => uncertain e nessun replay; kill prima dispatch => claim con fence superiore; duplicati simultanei => ID unico e payload mutato 409; regressione F05a. Test su SQLite reale, nessun provider. Dipendenze F05a; F05b.2 (migrazione JSON, directory privata, worker/API, revoca e quote atomiche) resta aperto, nessun cambio live. Autocontrollo non indipendente; CI e Node24/Windows da verificare.
+
+
+## Addendum v0.13 — F05b.2a migrazione offline (25 novembre 2026)
+Baseline #14 9a143b229; RV-01 pendente, modalità C. Dipende da F05a/b.1. Inventario: jobs.v1 JSON conserva input solo queued/running; terminali non hanno fingerprint. IDs e sessioni devono restare invariati. Task: importatore transazionale one-shot su ledger vuoto, marker SHA256 snapshot; nessuna riscrittura del JSON, nessuna attivazione automatica. Running legacy => uncertain (mai replay automatico), terminali preservati con payload ignoto non riutilizzabile, queued validati e normalizzati senza elevare consenso. Duplicati/ambiguità/corruzione/limiti => rollback totale. Ripetizione dello stesso snapshot no-op; snapshot diverso o destinazione occupata => rifiuto. Arrestare ogni writer legacy prima del cutover; backup e directory privata, rollback operativo, integrazione worker/HTTP, retention e quote restano separati.
+
+| Test | Accettazione |
+|---|---|
+| M1 | queued/terminal/running, ID e sessioni preservati; running mai acquisito |
+| M2 | stesso digest dopo riapertura idempotente; snapshot diverso rifiutato |
+| M3 | collisione o input invalido => nessuna riga/marker, sorgente invariata |
+| M4 | terminali senza fingerprint non riutilizzabili, scope e consenso preservati |
+| M5 | destinazione non vuota e caps rifiutati; regressioni lease |
+
+Autocontrollo tecnico separato dalla revisione RV-01, ancora non disponibile. Nessun merge o rilascio.
