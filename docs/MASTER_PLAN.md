@@ -161,3 +161,7 @@ Base #23 1c8b7820685eac3f5c38aea6e26faea22410ed77; mantiene portfolio e catalogo
 Nessuna equivalenza fra fixture e inferenza reale, né tra autocontrollo e revisione indipendente. Restano revoca cloud/in-flight, cutover, UI ripresa e build/installazione.
 
 S4 esteso: persistere anche cooldown dei due runtime locali nel ledger condiviso, senza riduzione; un altro job dopo riavvio non deve aggirare Retry-After. Il cloud usa il registro quote dedicato. Il writer JSON legacy resta fuori dal cutover SQLite.
+
+
+## Addendum v0.21 — F08/R03, grant pilota e revoca (25 novembre 2026)
+Base #25 2d061cbb, issue #26, esecutore Codex; RV-01 non disponibile, autocontrollo distinto. Per il pilota HTTPS legacy: fingerprint derivata da ID, digest del token e scadenza; nessun bearer persistito; grant fissato alla richiesta, isolato per lettura, idempotenza e cache. Job precedenti senza grant non eseguibili/leggibili nel pilota: backup offline prima del cambio. Verifica snapshot corrente al dispatch, polling seriale 250ms con timeout 1s e abort, controllo finale; la revoca non può annullare invii già effettuati né garantire rilevamento di cambiamenti transitori fra due letture. Nessuna nuova esposizione o attivazione cloud, SQLite resta loopback-only. A1 diniego prima del dispatch, A2 abort in-flight, A3 controllo finale, A4 snapshot non verificabile, A5 grant valido e cleanup; A6 rotazione/scadenza e isolamento lettura, A7 coda legacy e compatibilità locale, A8 HTTP HTTPS e gateway integrato, CI/build. Non chiudere R03 o F08 senza integrazione e review. 
