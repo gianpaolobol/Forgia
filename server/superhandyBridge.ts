@@ -48,6 +48,7 @@ export async function runLocalSpec(ledger:Ledger,options:{
  const dir=options.artifactDir;
  const scope={baselineSha:options.authorization?ledger.inspect().baselineSha:'',actor:options.actor,taskId:options.taskId,provider:options.provider,model:provider.model};
  const grantDigest=options.authorization?.(scope);
+ if(options.authorization&&(typeof grantDigest!=='string'||!/^[a-f0-9]{64}$/.test(grantDigest)))throw Error('Digest grant non valido.');
  const checkGrant=()=>{if(options.authorization&&options.authorization(scope,grantDigest)!==grantDigest)throw Error('Grant Superhandy modificato.');};
  signal.throwIfAborted();checkGrant();
  const work=ledger.claim(options.actor,300000,options.taskId);
@@ -70,7 +71,7 @@ export async function runLocalSpec(ledger:Ledger,options:{
  for(;;){
   signal.throwIfAborted();checkGrant();
   const job=await json(await request('/jobs/'+jobId));
-  if(!record(job))throw Error('Stato gateway non valido.');
+  checkGrant();if(!record(job))throw Error('Stato gateway non valido.');
   if(job.status==='done'){
    const result=job.result;
    if(!record(result)||!record(result.routing)||result.routing.provider!==options.provider||result.routing.model!==provider.model)throw Error('Risultato non corrispondente al provider autorizzato.');
