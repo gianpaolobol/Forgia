@@ -75,9 +75,9 @@ export function openSuperhandyLedger(path:string,initialize=false,clock=Date.now
    const b=baseline();requireThat(actor===b.plan.reviewer&&sha===b.sha&&digest(evidence)&&b.approval===null);
    q('UPDATE sh_baseline SET approval=? WHERE singleton=1').run(evidence);event(actor,'approve',null,evidence);
   });},
-  claim(actor:string,ttl=60000){return tx(()=>{
-   const b=baseline(),n=now();requireThat(b.approval&&b.plan.executors.includes(actor)&&Number.isSafeInteger(ttl)&&ttl>0&&ttl<=300000);
-   recover(n);const task=b.plan.tasks.find(t=>row(t.id).status==='queued'&&t.depends.every(d=>row(d).status==='accepted'));
+  claim(actor:string,ttl=60000,taskId?:string){return tx(()=>{
+   const b=baseline(),n=now();requireThat(b.approval&&b.plan.executors.includes(actor)&&Number.isSafeInteger(ttl)&&ttl>0&&ttl<=300000&&(taskId===undefined||id(taskId)));
+   recover(n);const task=b.plan.tasks.find(t=>(taskId===undefined||taskId===t.id)&&row(t.id).status==='queued'&&t.depends.every(d=>row(d).status==='accepted'));
    if(!task)return null;
    q("UPDATE sh_task SET status='claimed',actor=?,fence=fence+1,until=? WHERE id=?").run(actor,n+ttl,task.id);event(actor,'claim',task.id);
    const r=row(task.id);return {lease:{id:r.id,actor,fence:r.fence},baselineSha:b.sha,task,checkpoint:r.checkpoint};
