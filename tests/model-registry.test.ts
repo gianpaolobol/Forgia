@@ -27,3 +27,24 @@ test('M5 switching model never changes provider id, prefix or credentials',()=>{
  assert.notEqual(a.model,b.model);assert.equal(a.id,b.id);assert.equal(a.prefix,b.prefix);assert.equal(a.apiKey,b.apiKey);
  assert.equal(a.id,'openrouter');assert.equal(legacy[1].model,'org/old:free');
 });
+test('M5b switching profile cannot reset a real SQLite quota or cooldown across reopen',async t=>{
+ const {openQuotaLedger}=await import('../server/quotaLedger.ts');
+ const {mkdtempSync,rmSync}=await import('node:fs');
+ const {tmpdir}=await import('node:os');
+ const {join}=await import('node:path');
+ const dir=mkdtempSync(join(tmpdir(),'forgia-model-registry-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const path=join(dir,'quota.db');let now=Date.UTC(2026,0,1,12);
+ const a=resolveModelRegistry(legacy,config('first'))[1],b=resolveModelRegistry(legacy,config())[1];
+ const first=openQuotaLedger(path,()=>now);
+ try{
+  first.initialize({version:1,day:'2026-01-01',counts:{openrouter:19}});
+  assert.deepEqual(first.reserve(a.id),{granted:true,used:20});
+  first.cooldown(a.id,now+60000);
+ }finally{first.close();}
+ const second=openQuotaLedger(path,()=>now);
+ try{
+  assert.deepEqual(second.reserve(b.id),{granted:false,reason:'cooldown',used:20,nextEligibleAt:now+60000});
+  now+=60001;assert.deepEqual(second.reserve(b.id),{granted:false,reason:'quota',used:20});
+  assert.throws(()=>second.reserve(b.profile!));
+ }finally{second.close();}
+});
