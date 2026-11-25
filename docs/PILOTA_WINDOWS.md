@@ -18,7 +18,7 @@ Quando compare **Gateway attivo**, lascia aperta la finestra e allega in chat i 
 
 ## Prova le build pilota
 
-La build deve ricevere l'origine HTTPS in `EXPO_PUBLIC_FORGIA_PILOT_URL` e il percorso al certificato pubblico in `FORGIA_LAN_PILOT_CA`. Android integra il certificato solo per l'indirizzo indicato e usa un identificativo dedicato al collaudo. Su iPhone installa il certificato pubblico del pilota, poi abilita l'attendibilità SSL/TLS in **Impostazioni → Generali → Info → Impostazioni attendibilità certificati**. Quando Forgia lo chiede, consenti l'accesso alla rete locale. [Istruzioni Apple](https://support.apple.com/it-it/102390)
+La build pilota Android deve ricevere `EXPO_PUBLIC_FORGIA_ANDROID_LAN_PILOT=1`, l'origine HTTPS privata in `EXPO_PUBLIC_FORGIA_PILOT_URL` e il percorso al certificato pubblico in `FORGIA_LAN_PILOT_CA`. Per iPhone usare `EXPO_PUBLIC_FORGIA_IOS_LAN_PILOT=1`; l'origine privata può essere impostata nell'app. Le build standard ignorano l'URL pilota anche se presente. Android integra il certificato solo per l'indirizzo indicato e usa un identificativo dedicato al collaudo. Su iPhone installa il certificato pubblico del pilota, poi abilita l'attendibilità SSL/TLS in **Impostazioni → Generali → Info → Impostazioni attendibilità certificati**. Quando Forgia lo chiede, consenti l'accesso alla rete locale. [Istruzioni Apple](https://support.apple.com/it-it/102390)
 
 Nella build pilota apri **Motori AI**, inserisci il codice del telefono e premi **Verifica gateway pilota**. Poi crea un progetto sintetico e chiedi due revisioni. Registra esito, dispositivo e versione della build.
 
