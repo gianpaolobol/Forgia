@@ -94,6 +94,16 @@ export function openSuperhandyLedger(path:string,initialize=false,clock=Date.now
   submit(lease:Lease,evidence:string){return tx(()=>{
    active(lease,'dispatched',now());requireThat(digest(evidence));q("UPDATE sh_task SET status='submitted',until=NULL,evidence=? WHERE id=?").run(evidence,lease.id);event(lease.actor,'submit',lease.id,evidence);
   });},
+  // Explicit reconciliation of a result already dispatched; no requeue or acceptance.
+  // Trusted local actor IDs are declarations, as for the rest of this ledger.
+  reconcile(lease:Lease,evidence:string){return tx(()=>{
+   const b=baseline(),n=now();requireThat(b.approval&&lease&&id(lease.id)&&id(lease.actor)&&b.plan.executors.includes(lease.actor)&&Number.isSafeInteger(lease.fence)&&lease.fence>0&&digest(evidence));
+   recover(n);const r=row(lease.id);
+   requireThat(r.fence===lease.fence&&(r.status==='dispatched'||r.status==='uncertain'));
+   if(r.status==='dispatched')active(lease,'dispatched',n);
+   else{const last=q("SELECT actor FROM sh_event WHERE task=? AND action='dispatch' ORDER BY seq DESC LIMIT 1").get(lease.id);requireThat(last?.actor===lease.actor);}
+   q("UPDATE sh_task SET status='submitted',actor=?,until=NULL,evidence=? WHERE id=?").run(lease.actor,evidence,lease.id);event(lease.actor,'reconcile',lease.id,evidence);
+  });},
   review(actor:string,key:string,deliverable:string,decision:'accept'|'reject',evidence:string){return tx(()=>{
    const b=baseline(),r=row(key);requireThat(b.approval&&actor===b.plan.reviewer&&actor!==r.actor&&r.status==='submitted'&&digest(deliverable)&&r.evidence===deliverable&&digest(evidence)&&(decision==='accept'||decision==='reject'));
    q('UPDATE sh_task SET status=?,actor=NULL,checkpoint=NULL,evidence=CASE WHEN ? THEN evidence ELSE NULL END WHERE id=?').run(decision==='accept'?'accepted':'queued',Number(decision==='accept'),key);event(actor,'review-'+decision,key,evidence);
