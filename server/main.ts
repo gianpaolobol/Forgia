@@ -1,7 +1,7 @@
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http';
 import {createServer as createHttpsServer} from 'node:https';
 import {readFile} from 'node:fs/promises';
-import {pilotIdentity} from './pilot.ts';
+import {pilotIdentity, pilotBindHost} from './pilot.ts';
 import {resolve} from 'node:path';
 import {createProvider} from './providers.ts';
 import {createGateway} from './gateway.ts';
@@ -127,7 +127,7 @@ if (process.env.FORGIA_DISABLE_WEB_GATEWAY !== '1') createServer((req, res) => {
 }).listen(8787, '127.0.0.1', () => console.log('Gateway gratuito di sviluppo: http://127.0.0.1:8787.'));
 
 if (process.env.FORGIA_PILOT_HOST) {
- const host = process.env.FORGIA_PILOT_HOST;
+ const host = pilotBindHost(process.env.FORGIA_PILOT_HOST);
  const port = Number(process.env.FORGIA_PILOT_PORT || 8443);
  const certPath = process.env.FORGIA_PILOT_TLS_CERT;
  const keyPath = process.env.FORGIA_PILOT_TLS_KEY;
