@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createGateway} from '../server/gateway.ts';
 import {openQuotaLedger} from '../server/quotaLedger.ts';
+import {openCloudCache,cloudCacheKey} from '../server/cloudCache.ts';
 import {ProviderError,type Provider} from '../server/providers.ts';
 
 const spec={name:'Test',idea:'Catalogo',kind:'catalog',quiz:false,items:[{name:'Alba',category:'A',color:''}]};
@@ -81,4 +82,24 @@ test('G7 local legacy cache unchanged under opt-in',async t=>{
  const p=cloud({id:'local',mode:'local',async complete(){calls++;return JSON.stringify(spec);}});
  const g=createGateway(storage(),{quotaLedger:a});assert.equal((await g.plan('A',p,false)).cached,false);
  assert.equal((await g.plan('A',p,false)).cached,true);assert.equal(calls,1);assert.equal(a.read('groq').used,0);
+});
+
+test('C4 shared cloud cache keeps consent, eligibility, scope and quota gates',async t=>{
+ const {a,b,path}=fixture(t);const ca=openCloudCache(path),cb=openCloudCache(path);
+ try {
+  let calls=0,eligible=true;
+  const p=cloud({async eligible(){return eligible;},async complete(){calls++;return JSON.stringify(spec);}});
+  const x=createGateway(storage(),{quotaLedger:a,cloudCache:ca}),y=createGateway(storage(),{quotaLedger:b,cloudCache:cb});
+  assert.equal((await x.plan('A',p,true,'session-a')).cached,false);
+  assert.equal((await y.plan('A',p,true,'session-a')).cached,true);
+  assert.equal(a.read('groq').used,1);assert.equal(calls,1);
+  await assert.rejects(y.plan('A',p,false,'session-a'),/consenso/);
+  eligible=false;await assert.rejects(y.plan('A',p,true,'session-a'),status(403));eligible=true;
+  assert.equal((await y.plan('A',p,true,'session-b')).cached,false);
+  assert.equal((await y.plan('A',{...p,model:'other'},true,'session-a')).cached,false);
+  assert.equal(a.read('groq').used,3);assert.equal(calls,3);
+  ca.write(cloudCacheKey('groq',p.model,'invalid','session-a'),{bad:true});
+  await assert.rejects(x.plan('invalid',p,true,'session-a'));assert.equal(calls,3);
+  assert.throws(()=>createGateway(storage(),{cloudCache:ca}),/registro quote/);
+ }finally{ca.close();cb.close();}
 });
