@@ -14,6 +14,13 @@ import {createDurableLocalJobs, prepareLocalLedger} from './durableJobs.ts';
 import {existsSync} from 'node:fs';
 import {prepareCloudState} from './cloudState.ts';
 import {knownRoutingStatus} from './routingFailure.ts';
+const configs = resolveModelRegistry([
+ {id: 'local', prefix: 'OLLAMA', model: process.env.OLLAMA_MODEL ?? ''},
+ {id: 'llamacpp', prefix: 'LLAMACPP', model: process.env.LLAMACPP_MODEL ?? ''},
+ {id: 'cloudflare', prefix: 'CLOUDFLARE', model: process.env.CLOUDFLARE_MODEL ?? '', accountId: process.env.CLOUDFLARE_ACCOUNT_ID, apiKey: process.env.CLOUDFLARE_API_TOKEN, freePlanConfirmed: process.env.CLOUDFLARE_FREE_PLAN_CONFIRMED === 'true'},
+ {id: 'groq', prefix: 'GROQ', model: process.env.GROQ_MODEL ?? '', apiKey: process.env.GROQ_API_KEY, freePlanConfirmed: process.env.GROQ_FREE_PLAN_CONFIRMED === 'true'},
+ {id: 'openrouter', prefix: 'OPENROUTER', model: process.env.OPENROUTER_MODEL ?? '', apiKey: process.env.OPENROUTER_API_KEY},
+],process.env.FORGIA_MODEL_REGISTRY);
 const dataDirectory = resolve(process.env.FORGIA_DATA_DIR || '.data');
 const sqliteLocal = process.env.FORGIA_SQLITE_LOCAL === '1';
 const sqliteInitialize = process.env.FORGIA_SQLITE_INITIALIZE === '1';
@@ -33,13 +40,6 @@ const localLedger = sqliteLocal ? prepareLocalLedger(sqliteDirectory,await stora
 const cloudState = sqliteCloudState ? prepareCloudState(sqliteDirectory,sqliteCloudInitialize,
   sqliteCloudInitialize ? await storage.getItem('gateway.v1') : null) : undefined;
 const gateway = createGateway(storage,{...cloudState,localCooldownLedger:localLedger});
-const configs = resolveModelRegistry([
- {id: 'local', prefix: 'OLLAMA', model: process.env.OLLAMA_MODEL ?? ''},
- {id: 'llamacpp', prefix: 'LLAMACPP', model: process.env.LLAMACPP_MODEL ?? ''},
- {id: 'cloudflare', prefix: 'CLOUDFLARE', model: process.env.CLOUDFLARE_MODEL ?? '', accountId: process.env.CLOUDFLARE_ACCOUNT_ID, apiKey: process.env.CLOUDFLARE_API_TOKEN, freePlanConfirmed: process.env.CLOUDFLARE_FREE_PLAN_CONFIRMED === 'true'},
- {id: 'groq', prefix: 'GROQ', model: process.env.GROQ_MODEL ?? '', apiKey: process.env.GROQ_API_KEY, freePlanConfirmed: process.env.GROQ_FREE_PLAN_CONFIRMED === 'true'},
- {id: 'openrouter', prefix: 'OPENROUTER', model: process.env.OPENROUTER_MODEL ?? '', apiKey: process.env.OPENROUTER_API_KEY},
-],process.env.FORGIA_MODEL_REGISTRY);
 function configuredProvider(config: typeof configs[number]) {
  return createProvider({...config, fit: parseFit(config.fitRaw ?? process.env[config.prefix + '_FIT'])});
 }
