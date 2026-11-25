@@ -1,5 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {closeSync,fsyncSync,lstatSync,mkdirSync,openSync,writeFileSync} from 'node:fs';
+import {closeSync,constants,fstatSync,fsyncSync,lstatSync,mkdirSync,openSync,readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import type {openSuperhandyLedger} from './superhandyLedger.ts';
 type Ledger=Pick<ReturnType<typeof openSuperhandyLedger>,'claim'|'dispatch'|'submit'>;
@@ -52,7 +52,7 @@ export async function runLocalSpec(ledger:Ledger,options:{
  const session=randomUUID(),requestKey='sh:'+tag;
  // Persist intent before the fenced dispatch. A failed or ambiguous POST is
  // never repeated by this bridge; the lease eventually becomes uncertain.
- persist(dir,tag+'.intent.json',{baselineSha,task:task.id,fence:lease.fence,session,requestKey,provider:options.provider,model:provider.model});
+ persist(dir,tag+'.intent.json',{baselineSha,task:task.id,fence:lease.fence,actor:lease.actor,session,requestKey,provider:options.provider,model:provider.model});
  signal.throwIfAborted();
  ledger.dispatch(lease);
  const receipt=await json(await request('/jobs',{method:'POST',headers:{'content-type':'application/json','idempotency-key':requestKey},body:JSON.stringify({session,provider:options.provider,idea:task.criterion,cloudConsent:false,kind:'catalog',phase:'draft'})}),65536);
@@ -84,4 +84,54 @@ export function prepareSuperhandyArtifacts(root:string,archive:string){
  const dir=join(root,archive+'-artifacts');
  try{mkdirSync(dir,{mode:0o700});}catch(e){if((e as NodeJS.ErrnoException).code!=='EEXIST')throw e;}
  requirePrivateDirectory(dir);return dir;
+}
+
+function readPrivate(dir:string,name:string){
+ const fd=openSync(join(dir,name),constants.O_RDONLY|(process.platform==='win32'?0:constants.O_NOFOLLOW));
+ try{
+  const s=fstatSync(fd);
+  if(!s.isFile()||(process.platform!=='win32'&&(s.mode&0o077))||s.size>4*1024*1024)throw Error('Artefatto non valido o non privato.');
+  const body=readFileSync(fd,'utf8');
+  if(Buffer.byteLength(body)>4*1024*1024)throw Error('Artefatto troppo grande.');
+  return body;
+ }finally{closeSync(fd);}
+}
+function persistResult(dir:string,name:string,value:unknown){
+ try{return persist(dir,name,value);}
+ catch(e){
+  if((e as NodeJS.ErrnoException).code!=='EEXIST')throw e;
+  const body=readPrivate(dir,name);
+  if(body!==JSON.stringify(value))throw Error('Artefatto preesistente non corrispondente.');
+  return hash(body);
+ }
+}
+// Resume only by receipt, never by re-submitting the prompt. An expired
+// Superhandy lease can be reconciled, but the reviewer still must accept.
+export async function resumeLocalSpec(ledger:Pick<ReturnType<typeof openSuperhandyLedger>,'inspect'|'reconcile'>,options:{
+ actor:string;taskId:string;artifactDir:string;verifySpec:(value:unknown)=>unknown;transport?:typeof fetch;
+}){
+ requirePrivateDirectory(options.artifactDir);
+ const state=ledger.inspect(),row=state.tasks.find(r=>r.id===options.taskId);
+ if(!state.approval||!row||!['dispatched','uncertain'].includes(String(row.status))||typeof row.fence!=='number'||!Number.isSafeInteger(row.fence)||row.fence<1)throw Error('Task non riconciliabile.');
+ const event=state.events.findLast(e=>e.task===options.taskId&&e.action==='dispatch');
+ if(event?.actor!==options.actor||!state.plan.executors.includes(options.actor))throw Error('Attore non corrispondente al dispatch.');
+ const tag=state.baselineSha+'-'+options.taskId+'-'+row.fence,dir=options.artifactDir;
+ const intent:unknown=JSON.parse(readPrivate(dir,tag+'.intent.json'));
+ const receipt:unknown=JSON.parse(readPrivate(dir,tag+'.receipt.json'));
+ if(!record(intent)||intent.baselineSha!==state.baselineSha||intent.task!==options.taskId||intent.fence!==row.fence||intent.actor!==options.actor||typeof intent.session!=='string'||!uuid.test(intent.session)||intent.requestKey!=='sh:'+tag||!['local','llamacpp'].includes(String(intent.provider))||typeof intent.model!=='string'||!intent.model)throw Error('Intento non corrispondente.');
+ if(!record(receipt)||receipt.session!==intent.session||receipt.requestKey!==intent.requestKey||typeof receipt.jobId!=='string'||!uuid.test(receipt.jobId))throw Error('Ricevuta non corrispondente.');
+ const jobId=receipt.jobId,transport=options.transport??fetch,signal=AbortSignal.timeout(15000);
+ const request=(path:string)=>transport(origin+path,{method:'GET',signal,redirect:'error'});
+ const meta=await json(await request('/providers'),65536);
+ if(!record(meta)||meta.mode!=='free-only'||meta.localDevelopmentOnly!==true||meta.durableLocal!==true)throw Error('Gateway SQLite loopback richiesto.');
+ const job=await json(await request('/jobs/'+jobId));
+ if(!record(job))throw Error('Stato gateway non valido.');
+ if(job.status==='queued'||job.status==='running')return {status:'pending' as const,jobId,...(typeof job.nextEligibleAt==='number'?{nextEligibleAt:job.nextEligibleAt}:{})};
+ if(job.status!=='done')throw Error('Lavoro gateway non concluso con successo: non ripetere.');
+ const result=job.result;
+ if(!record(result)||!record(result.routing)||result.routing.provider!==intent.provider||result.routing.model!==intent.model)throw Error('Risultato non corrispondente al dispatch.');
+ const spec=options.verifySpec(result.spec);signal.throwIfAborted();
+ const evidence=persistResult(dir,tag+'.result.json',{baselineSha:state.baselineSha,task:options.taskId,fence:row.fence,jobId,provider:intent.provider,model:intent.model,spec});
+ ledger.reconcile({id:options.taskId,actor:options.actor,fence:row.fence},evidence);
+ return {status:'submitted' as const,jobId,evidence};
 }
