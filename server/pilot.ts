@@ -51,3 +51,7 @@ export function pilotGrant(authorization: string | undefined, entries: unknown, 
     if (entry.expiresAt > now && timingSafeEqual(digest, Buffer.from(entry.sha256, 'hex'))) return {session: entry.id, grant: grantFingerprint(entry)};
   }
 }
+
+export function pilotIdentity(authorization: string | undefined, entries: unknown, now = Date.now()) {
+  return pilotGrant(authorization, entries, now)?.session;
+}
