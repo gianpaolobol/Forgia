@@ -178,3 +178,5 @@ Esiti v0.23: P1–P6 PASS, G1–G7 PASS, C4 PASS in harness Node22 con SQLite re
 
 ## Addendum v0.24 — F03/F04, registro profili operativo (25 novembre 2026)
 Base #31 e8495b75, issue #32, RV-01 pendente. Registro a startup per adapter già approvati, più profili dichiarativi e un solo attivo per dominio quota. M1 compatibilità legacy e identità, M2 selezione e fit, M3 configurazione malformata e duplicati fail-closed, M4 policy modello anche inattivo e divieto di endpoint/credenziali/quota in profili, M5 cambio modello conserva dominio e credenziali, M6 integrazione adapter/gateway e quota effettiva al cambio modello, M7 HTTP main e UI. Nessun nuovo runtime/endpoint, nessuna attivazione cloud SQLite o pubblicazione. Non dichiarare registro universale completo: adapter nuovi richiedono contratto, storage, autorizzazione e test; nodi remoti e handoff restano separati.
+
+Esiti v0.24: M1–M5 e M5b PASS (6/6, Node22, SQLite reale per cambio profilo e riapertura). M6 adapter/gateway e M7 HTTP/UI non eseguiti. Controlli startup/fit e collegamento a main implementati ma non collaudati integralmente. RV-01 e CI pendenti.
