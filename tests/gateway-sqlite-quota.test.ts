@@ -118,3 +118,20 @@ test('P4 catalog preflight 429 persists across gateways without inference reserv
   assert.equal(checks,1);assert.equal(calls,0);assert.equal(reopened.read('openrouter').used,0);
  }finally{reopened.close();}
 });
+
+test('P6 real adapter to SQLite gateway: auto deferral survives reopened gateway',async t=>{
+ const {a,path}=fixture(t);const {createProvider}=await import('../server/providers.ts');
+ const {QuotaDeferral}=await import('../server/quotaDeferral.ts');
+ let requests=0;const before=Date.now();
+ const provider=createProvider({id:'openrouter',model:'fixture/model:free',apiKey:'synthetic'},async(url)=>{
+  requests++;assert.equal(url,'https://openrouter.ai/api/v1/models');
+  return new Response('',{status:429,headers:{'Retry-After':'180'}});
+ });
+ const context={kind:'catalog',phase:'draft'} as const;
+ await assert.rejects(createGateway(storage(),{quotaLedger:a}).planAuto('A',[provider],true,context),e=>e instanceof QuotaDeferral&&e.nextEligibleAt>=before+180000);
+ const reopened=openQuotaLedger(path);
+ try {
+  await assert.rejects(createGateway(storage(),{quotaLedger:reopened}).planAuto('B',[provider],true,context),e=>e instanceof QuotaDeferral&&e.nextEligibleAt>=before+180000);
+  assert.equal(requests,1);assert.equal(reopened.read('openrouter').used,0);
+ }finally{reopened.close();}
+});
