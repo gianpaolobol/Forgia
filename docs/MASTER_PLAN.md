@@ -209,3 +209,17 @@ Base #35 a3142a34, issue #36, RV-01 pendente. Sottoinsieme operativo H10–H12: 
 Estensione BSH7–BSH9 prima del codice: ripresa esplicita solo GET da ricevuta privata, verifica baseline/fence/attore/provider e hash artefatto, riconciliazione dopo scadenza nel solo stato submitted; nessun POST o autoaccettazione. Rifiutare ricevute mancanti, alterate, attore diverso e risultato non corrispondente. Restano identità locali dichiarate e assenza di riconciliazione se la ricevuta non è stata salvata.
 
 Esiti v0.26: BSH1–BSH9 PASS (10 test, SQLite reale, trasporto sintetico; inclusi scadenza, manomissione ricevuta, crash tra artefatto e submit); H1–H9 PASS regressione. BSH10 PASS CLI/processi e HTTP loopback reali, gateway sintetico. BSH11 integrazione main/worker/adapter locale con risposta Ollama sintetica aggiunta a scripts/test-durable-loopback.mjs, NON eseguita. Typecheck isolato sui sei file PASS, Node22. Nessuna CI completa, provider reale o RV-01. Restano H10–H12 parziali: adapter universali, grant/revoca autenticati, routing/handoff tra agenti reali e quote cloud, sostituzione reviewer, validatore, portfolio/UI, prove native e installazioni. Non dichiarare V1.0.
+
+
+## Addendum v0.27 — intake portafoglio in Superhandy (25 novembre 2026)
+
+Issue #38, base PR #37 4b13cba3, main f8e64a98, backup iteration-30 3550c197.
+F06/F07: integrazione in sola lettura del piano portafoglio con il ledger
+persistente. I1 baseline deterministica con SHA-256, ID e repository esatto;
+I2 fail-closed su progetti non schedulabili, riferimenti ambigui e ruoli non
+validi; I3 dipendenze, gate di approvazione, riapertura SQLite e revisore
+coerente; I4 esclusione dei task portfolio dal bridge AppSpec prima di
+accesso al gateway; I5 CLI produce JSON installabile nel ledger.
+Non è assegnazione automatica a sviluppatori, autenticazione o verifica
+indipendente. Inventario effettivo di ogni repo, adapter e grant reali,
+UI e validazione finale restano pendenti. RV-01 non assegnato, nessun merge.
