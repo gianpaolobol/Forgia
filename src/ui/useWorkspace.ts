@@ -5,6 +5,7 @@ import {text, validateSpec} from '../core/spec';
 import {createConversationRepository, requestedAccess, type Conversation} from '../core/conversation';
 import {lanPilotOrigin, pilotConnection} from '../core/lanPilot';
 import {closeJob, decodeJobRecovery, recoveryAction, type JobRecovery} from '../core/jobRecovery';
+import {receiptLookupHeaders} from '../core/receiptLookup';
 import {generateProject} from '../core/generator';
 import {exportBundle} from './export';
 
@@ -122,7 +123,8 @@ export function useWorkspace() {
     const origin = api;
     const last = row.turns[row.turns.length - 1];
     const action = recoveryAction(last.job, origin);
-    if (action === 'blocked') throw Error('Richiesta già avviata, chiusa o appartenente a un altro gateway. Nessun nuovo invio automatico.');
+    const lookupHeaders = receiptLookupHeaders(last.job,origin,row.id,last.requestId);
+    if (action === 'blocked' && !lookupHeaders) throw Error('Richiesta già avviata, chiusa o appartenente a un altro gateway. Nessun nuovo invio automatico.');
     let jobId: string;
     const authorization = credentials();
 
@@ -133,6 +135,14 @@ export function useWorkspace() {
 
     if (action === 'poll' && last.job?.state === 'accepted') {
       jobId = last.job.id;
+    } else if (lookupHeaders && last.job?.state === 'submitting') {
+      setJobStatus('Ricerca della ricevuta originale…');
+      const {response,body:receipt} = await gatewayRequest(origin+'/jobs/receipt',{method:'GET',headers:lookupHeaders},8000);
+      if (!response.ok) throw Error('Ricevuta non trovata o gateway non compatibile. Nessun reinvio automatico.');
+      const accepted = decodeJobRecovery({...last.job,state:'accepted',id:receipt.id});
+      if (accepted.state !== 'accepted') throw Error('Ricevuta non valida.');
+      jobId = accepted.id;
+      await saveJob(accepted);
     } else {
       setJobStatus('Collegamento al motore AI…');
       if (!nativePilot) {
@@ -256,7 +266,8 @@ export function useWorkspace() {
 
   return {page, projects, project, ready, busy, jobStatus, error, name, setName, idea, setIdea, note, setNote,
     providers, selected, setSelected, consent, setConsent, engineNote, access, go, start, open, create, send,
-    retry, abandonJob, download, refreshEngines, liveAI: !!api, nativePilot, iosLanPilot, pilotAddress, changePilotAddress, testerCode, setTesterCode};
+    retry, abandonJob, download, refreshEngines, liveAI: !!api,
+    canLookupReceipt: !!(api && project && receiptLookupHeaders(project.turns.at(-1)?.job,api,project.id,project.turns.at(-1)?.requestId)), nativePilot, iosLanPilot, pilotAddress, changePilotAddress, testerCode, setTesterCode};
 }
 
 export type Workspace = ReturnType<typeof useWorkspace>;

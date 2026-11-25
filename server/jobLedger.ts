@@ -1,6 +1,7 @@
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
 import {importLegacySnapshot} from './legacyJobMigration.ts';
+import {findDurableReceipt} from './receiptLookup.ts';
 
 type Lease = {id: string; fence: number; worker: string};
 type Row = {id: string; session: string; payload: string; status: string; fence: number; worker: string | null; expires: number | null; result: string | null};
@@ -130,6 +131,7 @@ export function openJobLedger(path: string) {
     },
     queuedCount() { return Number(q("SELECT count(*) AS n FROM forgia_jobs_v1 WHERE status='queued'").get()?.n ?? 0); },
     // ONLY for the dedicated trusted loopback API, never for authenticated pilot requests.
+    findReceipt(session:unknown,key:unknown) { return findDurableReceipt(db,session,key); },
     readLocal(id: string) { return (q('SELECT * FROM forgia_jobs_v1 WHERE id=?').get(id) ?? null) as unknown as Row | null; },
     read(id: string, session: string) { return (q('SELECT * FROM forgia_jobs_v1 WHERE id=? AND session=?').get(id,session) ?? null) as unknown as Row | null; },
     close() { db.close(); }

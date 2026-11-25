@@ -92,6 +92,11 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
    });
    res.end(JSON.stringify({mode:'free-only',providers,localDevelopmentOnly:session === undefined,durableLocal:session===undefined&&sqliteLocal,durableModelPin:session===undefined&&sqliteLocal}));return;
   }
+  if (req.method === 'GET' && req.url === '/jobs/receipt') {
+   if (session !== undefined || !durableJobs || jobs !== durableJobs) return reply(res,404,{error:'Recupero ricevuta non disponibile.'});
+   const receipt = durableJobs.findReceipt(req.headers['x-forgia-session'],req.headers['idempotency-key']);
+   return reply(res,receipt ? 200 : 404,receipt ?? {error:'Ricevuta non trovata. Nessun reinvio automatico.'});
+  }
   if (req.method === 'GET' && /^\/jobs\/[a-f0-9-]{36}$/.test(req.url ?? '')) {
    const job = await jobs.read(req.url!.slice(6), session, grant);
    if (!job) res.writeHead(404);
@@ -156,7 +161,7 @@ if (process.env.FORGIA_DISABLE_WEB_GATEWAY !== '1') createServer((req, res) => {
  res.setHeader('Vary', 'Origin');
  if (req.method === 'OPTIONS') {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Idempotency-Key');
+  res.setHeader('Access-Control-Allow-Headers', sqliteLocal ? 'Content-Type, Idempotency-Key, X-Forgia-Session' : 'Content-Type, Idempotency-Key');
   res.writeHead(204).end();
   return;
  }
