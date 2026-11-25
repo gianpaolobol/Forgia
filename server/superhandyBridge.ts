@@ -2,7 +2,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {closeSync,constants,fstatSync,fsyncSync,lstatSync,mkdirSync,openSync,readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import type {openSuperhandyLedger} from './superhandyLedger.ts';
-type Ledger=Pick<ReturnType<typeof openSuperhandyLedger>,'claim'|'dispatch'|'submit'>;
+type Ledger=Pick<ReturnType<typeof openSuperhandyLedger>,'claim'|'dispatch'|'recordReceipt'|'submit'>;
 type LocalProvider='local'|'llamacpp';
 const origin='http://127.0.0.1:8787';
 const hash=(text:string)=>createHash('sha256').update(text).digest('hex');
@@ -52,13 +52,14 @@ export async function runLocalSpec(ledger:Ledger,options:{
  const session=randomUUID(),requestKey='sh:'+tag;
  // Persist intent before the fenced dispatch. A failed or ambiguous POST is
  // never repeated by this bridge; the lease eventually becomes uncertain.
- persist(dir,tag+'.intent.json',{baselineSha,task:task.id,fence:lease.fence,actor:lease.actor,session,requestKey,provider:options.provider,model:provider.model});
+ const intentEvidence=persist(dir,tag+'.intent.json',{baselineSha,task:task.id,fence:lease.fence,actor:lease.actor,session,requestKey,provider:options.provider,model:provider.model});
  signal.throwIfAborted();
- ledger.dispatch(lease);
+ ledger.dispatch(lease,intentEvidence);
  const receipt=await json(await request('/jobs',{method:'POST',headers:{'content-type':'application/json','idempotency-key':requestKey},body:JSON.stringify({session,provider:options.provider,idea:task.criterion,cloudConsent:false,kind:'catalog',phase:'draft'})}),65536);
  if(!record(receipt)||typeof receipt.id!=='string'||!uuid.test(receipt.id))throw Error('Ricevuta gateway non valida: non ripetere.');
  const jobId=receipt.id;
- persist(dir,tag+'.receipt.json',{jobId,session,requestKey});
+ const receiptEvidence=persist(dir,tag+'.receipt.json',{jobId,session,requestKey});
+ ledger.recordReceipt(lease,receiptEvidence);
  for(;;){
   signal.throwIfAborted();
   const job=await json(await request('/jobs/'+jobId));
@@ -87,7 +88,7 @@ export function prepareSuperhandyArtifacts(root:string,archive:string){
 }
 
 function readPrivate(dir:string,name:string){
- const fd=openSync(join(dir,name),constants.O_RDONLY|(process.platform==='win32'?0:constants.O_NOFOLLOW));
+ const fd=openSync(join(dir,name),constants.O_RDONLY|(process.platform==='win32'?0:constants.O_NOFOLLOW|constants.O_NONBLOCK));
  try{
   const s=fstatSync(fd);
   if(!s.isFile()||(process.platform!=='win32'&&(s.mode&0o077))||s.size>4*1024*1024)throw Error('Artefatto non valido o non privato.');
@@ -116,8 +117,11 @@ export async function resumeLocalSpec(ledger:Pick<ReturnType<typeof openSuperhan
  const event=state.events.findLast(e=>e.task===options.taskId&&e.action==='dispatch');
  if(event?.actor!==options.actor||!state.plan.executors.includes(options.actor))throw Error('Attore non corrispondente al dispatch.');
  const tag=state.baselineSha+'-'+options.taskId+'-'+row.fence,dir=options.artifactDir;
- const intent:unknown=JSON.parse(readPrivate(dir,tag+'.intent.json'));
- const receipt:unknown=JSON.parse(readPrivate(dir,tag+'.receipt.json'));
+ const receiptEvent=state.events.findLast(e=>e.task===options.taskId&&e.action==='receipt');
+ const intentBody=readPrivate(dir,tag+'.intent.json'),receiptBody=readPrivate(dir,tag+'.receipt.json');
+ if(!event||!receiptEvent||Number(receiptEvent.seq)<=Number(event.seq)||receiptEvent.actor!==options.actor||event.evidence!==hash(intentBody)||receiptEvent.evidence!==hash(receiptBody))throw Error('Hash di intento o ricevuta non corrispondente al registro.');
+ const intent:unknown=JSON.parse(intentBody);
+ const receipt:unknown=JSON.parse(receiptBody);
  if(!record(intent)||intent.baselineSha!==state.baselineSha||intent.task!==options.taskId||intent.fence!==row.fence||intent.actor!==options.actor||typeof intent.session!=='string'||!uuid.test(intent.session)||intent.requestKey!=='sh:'+tag||!['local','llamacpp'].includes(String(intent.provider))||typeof intent.model!=='string'||!intent.model)throw Error('Intento non corrispondente.');
  if(!record(receipt)||receipt.session!==intent.session||receipt.requestKey!==intent.requestKey||typeof receipt.jobId!=='string'||!uuid.test(receipt.jobId))throw Error('Ricevuta non corrispondente.');
  const jobId=receipt.jobId,transport=options.transport??fetch,signal=AbortSignal.timeout(15000);
