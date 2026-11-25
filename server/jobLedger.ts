@@ -20,16 +20,27 @@ export function openJobLedger(path: string) {
     try { const value = fn(); db.exec('COMMIT'); return value; }
     catch (error) { db.exec('ROLLBACK'); throw error; }
   }
+  function validateNow(now: number) {
+    if (!Number.isSafeInteger(now) || now < 0) throw Error('Clock non valido.');
+  }
+  function validateLease(lease: Lease) {
+    if (!lease || typeof lease.id !== 'string' || !lease.id || typeof lease.worker !== 'string' || !lease.worker || !Number.isSafeInteger(lease.fence) || lease.fence < 1) throw Error('Lease non valido.');
+  }
   function expiry(now: number, ttl: number) {
-    if (!Number.isSafeInteger(now) || now < 0 || !Number.isSafeInteger(ttl) || ttl < 1 || ttl > 300000 || !Number.isSafeInteger(now + ttl)) throw Error('Lease non valido.');
+    validateNow(now);
+    if (!Number.isSafeInteger(ttl) || ttl < 1 || ttl > 300000 || !Number.isSafeInteger(now + ttl)) throw Error('Lease non valido.');
     return now + ttl;
   }
   function recover(now: number) {
-    q("UPDATE forgia_jobs_v1 SET status='uncertain', worker=NULL, expires=NULL WHERE status='dispatched' AND expires<=?").run(now);
-    q("UPDATE forgia_jobs_v1 SET status='queued', worker=NULL, expires=NULL WHERE status='claimed' AND expires<=?").run(now);
+    const uncertain = q("UPDATE forgia_jobs_v1 SET status='uncertain', worker=NULL, expires=NULL WHERE status='dispatched' AND expires<=?").run(now);
+    const queued = q("UPDATE forgia_jobs_v1 SET status='queued', worker=NULL, expires=NULL WHERE status='claimed' AND expires<=?").run(now);
+    return {uncertain: Number(uncertain.changes), queued: Number(queued.changes)};
   }
   function transition(lease: Lease, now: number, from: string, to: string, result: string | null) {
-    return Number(q('UPDATE forgia_jobs_v1 SET status=?, result=? WHERE id=? AND fence=? AND worker=? AND expires>? AND status=?').run(to,result,lease.id,lease.fence,lease.worker,now,from).changes) === 1;
+    validateNow(now);
+    validateLease(lease);
+    const terminal = to === 'done' || to === 'failed';
+    return Number(q('UPDATE forgia_jobs_v1 SET status=?, result=?, worker=CASE WHEN ? THEN NULL ELSE worker END, expires=CASE WHEN ? THEN NULL ELSE expires END WHERE id=? AND fence=? AND worker=? AND expires>? AND status=?').run(to,result,Number(terminal),Number(terminal),lease.id,lease.fence,lease.worker,now,from).changes) === 1;
   }
   return {
     enqueue(session: string, requestKey: string | null, payload: string) {
@@ -48,9 +59,13 @@ export function openJobLedger(path: string) {
         return id;
       });
     },
+    recoverExpired(now: number) {
+      validateNow(now);
+      return tx(() => recover(now));
+    },
     claim(worker: string, now: number, ttl: number): Row | null {
       const until = expiry(now,ttl);
-      if (!worker) throw Error('Worker non valido.');
+      if (typeof worker !== 'string' || !worker) throw Error('Worker non valido.');
       return tx(() => {
         recover(now);
         const row = q("SELECT id FROM forgia_jobs_v1 WHERE status='queued' ORDER BY rowid LIMIT 1").get();
@@ -62,6 +77,7 @@ export function openJobLedger(path: string) {
     markDispatched(lease: Lease, now: number) { return transition(lease,now,'claimed','dispatched',null); },
     heartbeat(lease: Lease, now: number, ttl: number) {
       const until = expiry(now,ttl);
+      validateLease(lease);
       return Number(q("UPDATE forgia_jobs_v1 SET expires=max(expires,?) WHERE id=? AND fence=? AND worker=? AND expires>? AND status IN ('claimed','dispatched')").run(until,lease.id,lease.fence,lease.worker,now).changes) === 1;
     },
     finish(lease: Lease, now: number, status: 'done' | 'failed', result: string) {
