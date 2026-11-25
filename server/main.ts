@@ -43,7 +43,7 @@ const gateway = createGateway(storage,{...cloudState,localCooldownLedger:localLe
 function configuredProvider(config: typeof configs[number]) {
  return createProvider({...config, fit: parseFit(config.fitRaw ?? process.env[config.prefix + '_FIT'])});
 }
-async function executePlan({idea, provider, consent, context}: import('./durableWorker.ts').DurableInput, backlog: number, session: string, isolated: boolean, signal?: AbortSignal) {
+async function executePlan({idea, provider, consent, context, expectedModel}: import('./durableWorker.ts').DurableInput, backlog: number, session: string, isolated: boolean, signal?: AbortSignal) {
   const scope = isolated ? session : undefined;
   const available = sqliteLocal ? configs.filter(c => localProvider(c.id)) : configs;
   if (provider === 'auto') {
@@ -55,6 +55,7 @@ async function executePlan({idea, provider, consent, context}: import('./durable
   const config = available.find(c => c.id === provider);
   if (!config) throw Error('Motore non configurato.');
   const selected = configuredProvider(config);
+  if(expectedModel!==undefined&&selected.model!==expectedModel)throw Error('Modello locale non corrispondente al pin.');
   const result = await gateway.plan(idea, selected, sqliteLocal ? false : consent, scope, signal);
   return {...result, routing: {provider: selected.id, model: selected.model, reason: 'Selezione manuale.', skipped: []}};
 }
@@ -64,6 +65,7 @@ function buildJobs(store: typeof storage, isolated: boolean, authorize?: JobAuth
 const durableJobs = localLedger ? createDurableLocalJobs(
  localLedger,
  (input,backlog,session,signal)=>executePlan(input,backlog,session,true,signal),
+ (id)=>{const config=configs.find(c=>c.id===id&&localProvider(c.id));try{return config?configuredProvider(config).model:undefined;}catch{return undefined;}},
 ) : undefined;
 const localJobs = durableJobs ?? buildJobs(storage, false);
 const allowed = new Set(['http://localhost:8081', 'http://127.0.0.1:8081']);
@@ -88,7 +90,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
      return {id: config.id, model: config.model, profile: config.profile, configured: false};
     }
    });
-   res.end(JSON.stringify({mode:'free-only',providers,localDevelopmentOnly:session === undefined,durableLocal:session===undefined&&sqliteLocal}));return;
+   res.end(JSON.stringify({mode:'free-only',providers,localDevelopmentOnly:session === undefined,durableLocal:session===undefined&&sqliteLocal,durableModelPin:session===undefined&&sqliteLocal}));return;
   }
   if (req.method === 'GET' && /^\/jobs\/[a-f0-9-]{36}$/.test(req.url ?? '')) {
    const job = await jobs.read(req.url!.slice(6), session, grant);
@@ -108,6 +110,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
   }
   const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw Error('Richiesta non valida.');
+  if(Object.hasOwn(body,'expectedModel')&&(session!==undefined||!sqliteLocal))return reply(res,400,{error:'Pin modello richiede gateway SQLite loopback.'});
   const requestKey = req.headers['idempotency-key'];
   if (session && (typeof requestKey !== 'string' || !/^[!-~]{1,900}:p[a-z0-9]{1,99}$/.test(requestKey))) {
    return reply(res, 400, {error: 'Identificativo della richiesta non valido.'});

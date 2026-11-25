@@ -1,9 +1,9 @@
 import type {openJobLedger} from './jobLedger.ts';
-import {inputPayload} from './legacyJobMigration.ts';
+import {durableInputPayload,type DurableInput} from './durableInput.ts';
 import {QuotaDeferral, retryDeadline} from './quotaDeferral.ts';
 
 type Ledger = ReturnType<typeof openJobLedger>;
-export type DurableInput = {idea: string; provider: string; consent: boolean; context: {kind: 'catalog' | 'tracker' | 'community'; phase: 'draft' | 'revision'}};
+export type {DurableInput} from './durableInput.ts';
 type Options = {
   worker: string;
   authorize: (session: string, input: DurableInput) => Promise<boolean>;
@@ -26,7 +26,7 @@ export async function runOneDurableJob(ledger: Ledger, options: Options): Promis
   const lease = {id:row.id, fence:row.fence, worker:options.worker};
   const fail = (error: string, statusCode: number): Outcome => ledger.failClaim(lease,now(),JSON.stringify({error,statusCode})) ? 'failed' : 'lease-lost';
   let input: DurableInput;
-  try { input = JSON.parse(inputPayload(JSON.parse(row.payload))); }
+  try { input = JSON.parse(durableInputPayload(JSON.parse(row.payload))); }
   catch { return fail('Richiesta in coda non valida.',400); }
   let authorized: boolean;
   let authTimer: ReturnType<typeof setTimeout> | undefined;

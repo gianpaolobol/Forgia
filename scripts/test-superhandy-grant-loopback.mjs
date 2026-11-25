@@ -9,7 +9,7 @@ import {join} from 'node:path';
 const root=mkdtempSync(join(tmpdir(),'forgia-grant-smoke-')),data=join(root,'data');mkdirSync(data,{mode:0o700});
 const plan=join(root,'plan.json'),grantPath=join(root,'grant.json'),h='a'.repeat(64);
 const jobId='00000000-0000-4000-8000-000000000001';let posts=0,gets=0,done=false;
-const meta={mode:'free-only',localDevelopmentOnly:true,durableLocal:true,providers:[{id:'local',model:'qwen',configured:true}]};
+const meta={mode:'free-only',localDevelopmentOnly:true,durableLocal:true,durableModelPin:true,providers:[{id:'local',model:'qwen',configured:true}]};
 const spec={name:'Demo',idea:'Catalogo A',kind:'catalog',quiz:false,items:[{name:'X',category:'Y',color:''}]};
 const server=createServer(async(req,res)=>{
  try{
@@ -17,7 +17,7 @@ const server=createServer(async(req,res)=>{
   if(req.url==='/providers'&&req.method==='GET')return send(meta);
   if(req.url==='/jobs'&&req.method==='POST'){
    let body='';for await(const chunk of req){body+=chunk;if(body.length>4096)throw Error('body');}
-   const parsed=JSON.parse(body);assert.equal(parsed.provider,'local');assert.equal(parsed.cloudConsent,false);assert.equal(parsed.idea,'Catalogo A');posts++;return send({id:jobId});
+   const parsed=JSON.parse(body);assert.equal(parsed.provider,'local');assert.equal(parsed.expectedModel,'qwen');assert.equal(parsed.cloudConsent,false);assert.equal(parsed.idea,'Catalogo A');posts++;return send({id:jobId});
   }
   if(req.url==='/jobs/'+jobId&&req.method==='GET'){
    gets++;return send(done?{status:'done',result:{spec,routing:{provider:'local',model:'qwen'}}}:{status:'queued',nextEligibleAt:Date.now()+60000});

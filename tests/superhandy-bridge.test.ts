@@ -10,7 +10,7 @@ import {validateSpec} from '../src/core/spec.ts';
 const h='a'.repeat(64),jobId='00000000-0000-4000-8000-000000000001';
 const plan={project:'demo',planner:'planner',reviewer:'reviewer',executors:['one','two'],tasks:[{id:'a',depends:[],criterion:'Catalogo A'},{id:'b',depends:[],criterion:'Catalogo B'},{id:'c',depends:['b'],criterion:'Catalogo C'}]};
 const spec={name:'B',idea:'Catalogo B',kind:'catalog',quiz:false,items:[{name:'X',category:'Y',color:''}]};
-const meta={mode:'free-only',localDevelopmentOnly:true,durableLocal:true,providers:[{id:'local',model:'qwen',configured:true}]};
+const meta={mode:'free-only',localDevelopmentOnly:true,durableLocal:true,durableModelPin:true,providers:[{id:'local',model:'qwen',configured:true}]};
 const response=(v:unknown)=>Response.json(v);
 function fixture(t:TestContext,approved=true){
  const dir=mkdtempSync(join(tmpdir(),'forgia-bridge-'));let now=100;
@@ -22,7 +22,7 @@ function fixture(t:TestContext,approved=true){
 }
 test('BSH1 preflight refuses non-durable or unconfigured gateway before claim',async t=>{
  const {db,options,artifactDir}=fixture(t);
- for(const m of [{...meta,durableLocal:false},{...meta,providers:[]},{...meta,localDevelopmentOnly:false}]){
+ for(const m of [{...meta,durableLocal:false},{...meta,durableModelPin:false},{...meta,providers:[]},{...meta,localDevelopmentOnly:false}]){
   await assert.rejects(runLocalSpec(db,{...options,transport:async()=>response(m)}));
  }
  assert.equal(db.inspect().events.filter(e=>e.action==='claim').length,0);assert.deepEqual(readdirSync(artifactDir),[]);
@@ -34,7 +34,7 @@ test('BSH2/3 one local POST, persistent receipt and verified artifact; review se
   if(u.pathname==='/providers')return response(meta);
   if(u.pathname==='/jobs'){
    posts++;assert.equal(init?.method,'POST');assert.equal(db.inspect().tasks.find(r=>r.id==='b')?.status,'dispatched');
-   const b=JSON.parse(String(init?.body));assert.equal(b.provider,'local');assert.equal(b.cloudConsent,false);assert.equal(b.idea,'Catalogo B');
+   const b=JSON.parse(String(init?.body));assert.equal(b.provider,'local');assert.equal(b.expectedModel,'qwen');assert.equal(b.cloudConsent,false);assert.equal(b.idea,'Catalogo B');
    assert.ok(new Headers(init?.headers).get('idempotency-key')?.startsWith('sh:'));return response({id:jobId});
   }
   assert.equal(u.pathname,'/jobs/'+jobId);polls++;

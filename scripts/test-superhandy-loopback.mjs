@@ -17,11 +17,11 @@ let posts=0,done=false,failure;
 const fake=createServer(async(req,res)=>{
  try{
   res.setHeader('content-type','application/json');
-  if(req.method==='GET'&&req.url==='/providers')return res.end(JSON.stringify({mode:'free-only',localDevelopmentOnly:true,durableLocal:true,providers:[{id:'local',model:'fixture-local',configured:true}]}));
+  if(req.method==='GET'&&req.url==='/providers')return res.end(JSON.stringify({mode:'free-only',localDevelopmentOnly:true,durableLocal:true,durableModelPin:true,providers:[{id:'local',model:'fixture-local',configured:true}]}));
   if(req.method==='POST'&&req.url==='/jobs'){
    posts++;const chunks=[];for await(const chunk of req)chunks.push(chunk);
    const body=JSON.parse(Buffer.concat(chunks).toString('utf8'));
-   assert.equal(body.idea,'Catalogo di prova');assert.equal(body.provider,'local');assert.equal(body.cloudConsent,false);assert.ok(req.headers['idempotency-key'].startsWith('sh:'));
+   assert.equal(body.idea,'Catalogo di prova');assert.equal(body.provider,'local');assert.equal(body.expectedModel,'fixture-local');assert.equal(body.cloudConsent,false);assert.ok(req.headers['idempotency-key'].startsWith('sh:'));
    res.writeHead(202);return res.end(JSON.stringify({id:jobId}));
   }
   if(req.method==='GET'&&req.url==='/jobs/'+jobId)return res.end(JSON.stringify(done?{status:'done',result:{spec,routing:{provider:'local',model:'fixture-local'}}}:{status:'queued',nextEligibleAt:Date.now()+60000}));

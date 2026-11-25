@@ -80,7 +80,12 @@ try{
  await writeFile(planPath,JSON.stringify({project:'demo',planner:'planner',reviewer:'reviewer',executors:['one'],tasks:[{id:'spec',depends:[],criterion:'Catalogo Superhandy'},{id:'next',depends:['spec'],criterion:'Altro catalogo'}]}),{mode:0o600});
  const baselineSha=await cli('init','integration',planPath);await cli('approve','integration','reviewer',baselineSha,reviewHash);
  assert.equal((await (await request('/providers')).json()).durableLocal,true);
- const sh=await cli('run-local-spec','integration','one','spec','local');assert.equal(sh.status,'submitted');
+ assert.equal((await (await request('/providers')).json()).durableModelPin,true);
+ assert.equal((await post('/jobs',{...body,provider:'local',expectedModel:'wrong-model'},'wrong-pin')).status,409);
+ assert.equal(calls,2);
+ const grantPath=join(dir,'superhandy-grant.json');
+ await writeFile(grantPath,JSON.stringify({version:1,baselineSha,actor:'one',taskId:'spec',provider:'local',model:'fixture-local',expiresAt:Date.now()+600000}),{mode:0o600});
+ const sh=await cli('run-granted-local-spec','integration','one','spec','local',grantPath);assert.equal(sh.status,'submitted');
  assert.equal((await wait(sh.jobId)).status,'done');assert.equal(calls,3);
  const artifacts=join(dir,'superhandy','integration-artifacts'),names=await readdir(artifacts);
  const artifact=await readFile(join(artifacts,names.find(n=>n.endsWith('.result.json'))));

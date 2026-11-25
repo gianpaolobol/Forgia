@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdirSync, lstatSync, openSync, closeSync} from 'node:fs';
 import {join} from 'node:path';
 import {openJobLedger} from './jobLedger.ts';
-import {inputPayload} from './legacyJobMigration.ts';
+import {durableInputPayload,durableModelAllowed} from './durableInput.ts';
 import {runOneDurableJob, type DurableInput} from './durableWorker.ts';
 import {routingContext} from './routing.ts';
 
@@ -30,7 +30,7 @@ export function prepareLocalLedger(directory: string, snapshot: string, initiali
   catch (error) { ledger.close(); throw error; }
 }
 
-export function createDurableLocalJobs(ledger: Ledger, run: (input: DurableInput, backlog: number, session: string, signal: AbortSignal) => Promise<unknown>) {
+export function createDurableLocalJobs(ledger: Ledger, run: (input: DurableInput, backlog: number, session: string, signal: AbortSignal) => Promise<unknown>, modelFor?: (provider:string)=>string|undefined) {
   const worker = randomUUID();
   let running = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -39,7 +39,7 @@ export function createDurableLocalJobs(ledger: Ledger, run: (input: DurableInput
     try {
       const outcome = await runOneDurableJob(ledger,{
         worker,
-        authorize: async (_session,input) => ['auto','local','llamacpp'].includes(input.provider),
+        authorize: async (_session,input) => durableModelAllowed(input,modelFor),
         run: (input,session,signal) => run({...input,consent:false},ledger.queuedCount(),session,signal),
       });
       if (running) timer=setTimeout(tick,outcome==='idle'?500:0);
@@ -58,7 +58,8 @@ export function createDurableLocalJobs(ledger: Ledger, run: (input: DurableInput
       if (typeof session!=='string' || !sessionPattern.test(session)) throw Error('Sessione di lavoro non valida.');
       if (typeof provider!=='string' || !['auto','local','llamacpp'].includes(provider)) throw Error('In modalità SQLite pilota sono ammessi solo motori locali.');
       if (requestKey!==undefined && (typeof requestKey!=='string' || !requestKey || requestKey.length>1000)) throw Error('Chiave richiesta non valida.');
-      const payload=inputPayload({idea:typeof idea==='string'?idea.trim():idea,provider,consent:false,context:routingContext(body.kind,body.phase)});
+      const payload=durableInputPayload({idea:typeof idea==='string'?idea.trim():idea,provider,consent:false,context:routingContext(body.kind,body.phase),...(Object.hasOwn(body,'expectedModel')?{expectedModel:body.expectedModel}:{})});
+      if (!durableModelAllowed(JSON.parse(payload),modelFor)) throw Object.assign(Error('Modello locale non corrispondente al pin.'),{status:409});
       return {id:ledger.enqueue(session,requestKey??null,payload)};
     },
     async read(id: string, session?: string) {

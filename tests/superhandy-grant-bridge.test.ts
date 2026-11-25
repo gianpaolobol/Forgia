@@ -7,7 +7,7 @@ import {openSuperhandyLedger} from '../server/superhandyLedger.ts';
 import {runLocalSpec,resumeLocalSpec,prepareSuperhandyArtifacts} from '../server/superhandyBridge.ts';
 import {localSpecAuthorization} from '../server/superhandyGrant.ts';
 const h='a'.repeat(64),jobId='00000000-0000-4000-8000-000000000001';
-const meta={mode:'free-only',localDevelopmentOnly:true,durableLocal:true,providers:[{id:'local',model:'qwen',configured:true}]};
+const meta={mode:'free-only',localDevelopmentOnly:true,durableLocal:true,durableModelPin:true,providers:[{id:'local',model:'qwen',configured:true}]};
 const result={status:'done',result:{spec:{name:'Demo'},routing:{provider:'local',model:'qwen'}}};
 function fixture(t:TestContext){
  const root=mkdtempSync(join(tmpdir(),'forgia-grant-bridge-')),path=join(root,'grant.json');let now=1000;
@@ -43,7 +43,7 @@ test('G5 revocation after GET rejects result and preserves receipt',async t=>{
 });
 test('G4/G5 grant-bound receipt requires original grant on resume, no replay',async t=>{
  const f=fixture(t);let posts=0,gets=0,done=false;
- const transport:typeof fetch=async (input,init)=>{const p=new URL(String(input)).pathname;if(p==='/providers')return Response.json(meta);if(p==='/jobs'){posts++;assert.equal(init?.method,'POST');return Response.json({id:jobId});}gets++;return Response.json(done?result:{status:'queued',nextEligibleAt:Date.now()+60000});};
+ const transport:typeof fetch=async (input,init)=>{const p=new URL(String(input)).pathname;if(p==='/providers')return Response.json(meta);if(p==='/jobs'){posts++;assert.equal(init?.method,'POST');assert.equal(JSON.parse(String(init?.body)).expectedModel,'qwen');return Response.json({id:jobId});}gets++;return Response.json(done?result:{status:'queued',nextEligibleAt:Date.now()+60000});};
  assert.equal((await runLocalSpec(f.db,{...f.options,authorization:f.auth(),transport})).status,'deferred');
  const intent=JSON.parse(readFileSync(join(f.options.artifactDir,readdirSync(f.options.artifactDir).find(n=>n.endsWith('.intent.json'))!),'utf8'));
  assert.match(intent.grantDigest,/^[a-f0-9]{64}$/);f.advance();done=true;const before=gets;
