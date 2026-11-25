@@ -10,6 +10,7 @@ import {diskStorage} from './disk.ts';
 import {createJobs} from './jobs.ts';
 import {createDurableLocalJobs, prepareLocalLedger} from './durableJobs.ts';
 import {existsSync} from 'node:fs';
+import {prepareCloudState} from './cloudState.ts';
 import {knownRoutingStatus} from './routingFailure.ts';
 const dataDirectory = resolve(process.env.FORGIA_DATA_DIR || '.data');
 const sqliteLocal = process.env.FORGIA_SQLITE_LOCAL === '1';
@@ -19,7 +20,16 @@ if (sqliteLocal && (process.env.FORGIA_PILOT_HOST || process.env.FORGIA_DISABLE_
 const sqliteDirectory = resolve(dataDirectory,'sqlite-loopback');
 if (!sqliteLocal && existsSync(sqliteDirectory)) throw Error('Archivio SQLite presente: non avviare la vecchia coda JSON. Ripristino offline necessario.');
 const storage = diskStorage(dataDirectory);
-const gateway = createGateway(storage);
+const sqliteCloudState = process.env.FORGIA_SQLITE_CLOUD_STATE === '1';
+const sqliteCloudInitialize = process.env.FORGIA_SQLITE_CLOUD_INITIALIZE === '1';
+if (sqliteCloudInitialize && !sqliteCloudState) throw Error('Inizializzazione quota/cache richiede opt-in.');
+if (sqliteCloudState && (!sqliteLocal || sqliteInitialize)) throw Error('Quota/cache richiede coda SQLite già migrata, senza inizializzazione concorrente.');
+if (!sqliteCloudState && existsSync(resolve(sqliteDirectory,'cloud.sqlite'))) throw Error('Archivio quota/cache presente: mantenere opt-in o ripristinare offline.');
+// Cloud providers remain disabled in SQLite local mode. This prepares the
+// persistent state without enabling any external inference or pilot access.
+const cloudState = sqliteCloudState ? prepareCloudState(sqliteDirectory,sqliteCloudInitialize,
+  sqliteCloudInitialize ? await storage.getItem('gateway.v1') : null) : undefined;
+const gateway = createGateway(storage,cloudState);
 const configs = [
  {id: 'local', prefix: 'OLLAMA', model: process.env.OLLAMA_MODEL ?? ''},
  {id: 'llamacpp', prefix: 'LLAMACPP', model: process.env.LLAMACPP_MODEL ?? ''},
