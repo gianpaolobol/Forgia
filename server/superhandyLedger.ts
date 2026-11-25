@@ -86,7 +86,13 @@ export function openSuperhandyLedger(path:string,initialize=false,clock=Date.now
    const n=now(),r=row(lease.id);requireThat(r.status==='claimed'||r.status==='dispatched');active(lease,r.status,n);requireThat(Number.isSafeInteger(ttl)&&ttl>0&&ttl<=300000);
    q('UPDATE sh_task SET until=max(until,?) WHERE id=?').run(n+ttl,lease.id);event(lease.actor,'heartbeat',lease.id);
   });},
-  dispatch(lease:Lease){return tx(()=>{active(lease,'claimed',now());q("UPDATE sh_task SET status='dispatched' WHERE id=?").run(lease.id);event(lease.actor,'dispatch',lease.id);});},
+  dispatch(lease:Lease,intentEvidence?:string){return tx(()=>{active(lease,'claimed',now());requireThat(intentEvidence===undefined||digest(intentEvidence));q("UPDATE sh_task SET status='dispatched' WHERE id=?").run(lease.id);event(lease.actor,'dispatch',lease.id,intentEvidence??null);});},
+  recordReceipt(lease:Lease,evidence:string){return tx(()=>{
+   active(lease,'dispatched',now());requireThat(digest(evidence));
+   const last=q("SELECT seq,actor,evidence FROM sh_event WHERE task=? AND action='dispatch' ORDER BY seq DESC LIMIT 1").get(lease.id);
+   requireThat(last&&last.actor===lease.actor&&digest(last.evidence)&&!q("SELECT 1 FROM sh_event WHERE task=? AND action='receipt' AND seq>?").get(lease.id,last.seq));
+   event(lease.actor,'receipt',lease.id,evidence);
+  });},
   handoff(lease:Lease,checkpoint:string){return tx(()=>{
    const r=active(lease,'claimed',now());requireThat(digest(checkpoint));const next=r.handoffs>=2?'blocked':'queued';
    q('UPDATE sh_task SET status=?,actor=NULL,until=NULL,checkpoint=?,handoffs=handoffs+? WHERE id=?').run(next,checkpoint,next==='queued'?1:0,lease.id);event(lease.actor,'handoff-'+next,lease.id,checkpoint);return next;
@@ -101,7 +107,9 @@ export function openSuperhandyLedger(path:string,initialize=false,clock=Date.now
    recover(n);const r=row(lease.id);
    requireThat(r.fence===lease.fence&&(r.status==='dispatched'||r.status==='uncertain'));
    if(r.status==='dispatched')active(lease,'dispatched',n);
-   else{const last=q("SELECT actor FROM sh_event WHERE task=? AND action='dispatch' ORDER BY seq DESC LIMIT 1").get(lease.id);requireThat(last?.actor===lease.actor);}
+   const last=q("SELECT seq,actor,evidence FROM sh_event WHERE task=? AND action='dispatch' ORDER BY seq DESC LIMIT 1").get(lease.id);
+   requireThat(last&&last.actor===lease.actor&&digest(last.evidence));
+   const receipt=q("SELECT actor,evidence FROM sh_event WHERE task=? AND action='receipt' AND seq>? ORDER BY seq DESC LIMIT 1").get(lease.id,last.seq);requireThat(receipt?.actor===lease.actor&&digest(receipt.evidence));
    q("UPDATE sh_task SET status='submitted',actor=?,until=NULL,evidence=? WHERE id=?").run(lease.actor,evidence,lease.id);event(lease.actor,'reconcile',lease.id,evidence);
   });},
   review(actor:string,key:string,deliverable:string,decision:'accept'|'reject',evidence:string){return tx(()=>{
