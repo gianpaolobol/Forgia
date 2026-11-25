@@ -80,6 +80,10 @@ export function createGateway(store:Storage,{dailyLimit}:{dailyLimit?:number}={}
      const failure = summarizeRoutingFailure([504]);
      throw new ProviderError(failure.message, failure.status);
     }
+    if (error instanceof ProviderError && normalizeRoutingStatus(error.status) !== error.status) {
+     const failure = summarizeRoutingFailure([normalizeRoutingStatus(error.status)]);
+     throw new ProviderError(failure.message, failure.status);
+    }
     throw error;
    }
   });
