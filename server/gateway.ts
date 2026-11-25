@@ -99,6 +99,7 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache,l
   signal.throwIfAborted();
   state.counts[provider.id] = used + 1;
   await store.setItem('gateway.v1', JSON.stringify(state));
+  signal.throwIfAborted(); // Revocation during durable quota reservation: no dispatch or refund.
   let output: string;
   try {
    output = await provider.complete(prompt, signal);
