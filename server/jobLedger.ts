@@ -44,7 +44,7 @@ export function openJobLedger(path: string) {
     return Number(q('UPDATE forgia_jobs_v1 SET status=?, result=?, worker=CASE WHEN ? THEN NULL ELSE worker END, expires=CASE WHEN ? THEN NULL ELSE expires END WHERE id=? AND fence=? AND worker=? AND expires>? AND status=?').run(to,result,Number(terminal),Number(terminal),lease.id,lease.fence,lease.worker,now,from).changes) === 1;
   }
   return {
-    importLegacy(raw: string) { return importLegacySnapshot(db,raw); },
+    importLegacy(raw: string, requireExisting = false) { return importLegacySnapshot(db,raw,requireExisting); },
     enqueue(session: string, requestKey: string | null, payload: string) {
       if (!session || requestKey === '' || !payload) throw Error('Richiesta non valida.');
       return tx(() => {
@@ -88,6 +88,9 @@ export function openJobLedger(path: string) {
       if (status !== 'done' && status !== 'failed') throw Error('Esito non valido.');
       return transition(lease,now,'dispatched',status,result);
     },
+    queuedCount() { return Number(q("SELECT count(*) AS n FROM forgia_jobs_v1 WHERE status='queued'").get()?.n ?? 0); },
+    // ONLY for the dedicated trusted loopback API, never for authenticated pilot requests.
+    readLocal(id: string) { return (q('SELECT * FROM forgia_jobs_v1 WHERE id=?').get(id) ?? null) as unknown as Row | null; },
     read(id: string, session: string) { return (q('SELECT * FROM forgia_jobs_v1 WHERE id=? AND session=?').get(id,session) ?? null) as unknown as Row | null; },
     close() { db.close(); }
   };

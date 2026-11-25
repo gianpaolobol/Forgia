@@ -26,7 +26,7 @@ export function inputPayload(value: unknown): string {
   return JSON.stringify({idea,provider,consent,context:{kind:context.kind,phase:context.phase}});
 }
 
-export function importLegacySnapshot(db: DatabaseSync, raw: string) {
+export function importLegacySnapshot(db: DatabaseSync, raw: string, requireExisting = false) {
   if (typeof raw !== 'string' || Buffer.byteLength(raw) > 64 * 1024 * 1024) throw invalid();
   const digest = createHash('sha256').update(raw).digest('hex');
   db.exec('BEGIN IMMEDIATE');
@@ -38,6 +38,7 @@ export function importLegacySnapshot(db: DatabaseSync, raw: string) {
       db.exec('COMMIT');
       return {imported: Number(marker.count), alreadyImported:true, digest};
     }
+    if (requireExisting) throw Error('Marker di migrazione mancante: ripristino offline necessario.');
     if (db.prepare('SELECT 1 FROM forgia_jobs_v1 LIMIT 1').get()) throw Error('Destinazione non vuota.');
     const snapshot: unknown = JSON.parse(raw);
     if (!Array.isArray(snapshot) || snapshot.length > 48) throw invalid();

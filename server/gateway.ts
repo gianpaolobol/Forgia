@@ -61,6 +61,7 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger}:{dailyLimit
   return {spec,cached:false,requestsUsed:grant.used};
  }
  async function attempt(prompt: string, provider: Provider, consent: boolean, state: State, signal: AbortSignal, scope?: string, reserve = 0) {
+  signal.throwIfAborted();
   if (!providerIds.includes(provider.id) || !['local', 'free'].includes(provider.mode)) {
    throw Error('Fornitore non supportato in modalità gratuita.');
   }
@@ -84,6 +85,7 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger}:{dailyLimit
    if (error instanceof ProviderError && error.status === 429) cooldowns.set(provider.id, Date.now() + 60_000);
    throw error;
   }
+  signal.throwIfAborted();
   let spec: AppSpec;
   try {
    spec = validateSpec(JSON.parse(output));
@@ -97,10 +99,12 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger}:{dailyLimit
   return {spec, cached: false, requestsUsed: state.counts[provider.id]};
  }
 
- function plan(idea: string, provider: Provider, consent: boolean, scope?: string) {
+ function plan(idea: string, provider: Provider, consent: boolean, scope?: string, external?: AbortSignal) {
   return enqueue(async () => {
    try {
-    return await attempt(text(idea, 'Idea', 8000), provider, consent, await load(), AbortSignal.timeout(45000), scope);
+    external?.throwIfAborted();
+    const signal = AbortSignal.any([AbortSignal.timeout(45000), ...(external ? [external] : [])]);
+    return await attempt(text(idea, 'Idea', 8000), provider, consent, await load(), signal, scope);
    } catch (error) {
     if (error instanceof DOMException && error.name === 'TimeoutError') {
      const failure = summarizeRoutingFailure([504]);
@@ -115,9 +119,10 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger}:{dailyLimit
   });
  }
 
- function planAuto(idea: string, providers: readonly Provider[], consent: boolean, context: RoutingContext, backlog = -1, scope?: string) {
+ function planAuto(idea: string, providers: readonly Provider[], consent: boolean, context: RoutingContext, backlog = -1, scope?: string, external?: AbortSignal) {
   return enqueue(async () => {
-   const deadline = AbortSignal.timeout(90000);
+   external?.throwIfAborted();
+   const deadline = AbortSignal.any([AbortSignal.timeout(90000), ...(external ? [external] : [])]);
    const prompt = text(idea, 'Idea', 8000);
    const state = await load();
    const remaining = Object.fromEntries(providers.map(p => {
