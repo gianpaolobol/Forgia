@@ -39,15 +39,15 @@ export class ProviderError extends Error {
 }
 async function payload(r:Response):Promise<any>{
  if(!r.ok)throw new ProviderError(r.status===429?'Quota gratuita esaurita: lavoro sospeso.':`Servizio AI non disponibile (${r.status}).`,r.status);
- const raw=await r.text();if(raw.length>1_000_000)throw new ProviderError('Risposta troppo grande.');
- try { return JSON.parse(raw); } catch { throw new ProviderError('Risposta del servizio AI non valida.'); }
+ const raw=await r.text();if(raw.length>1_000_000)throw new ProviderError('Risposta troppo grande.', 502);
+ try { return JSON.parse(raw); } catch { throw new ProviderError('Risposta del servizio AI non valida.', 502); }
 }
 export function createProvider(config:Config,transport:Transport=fetch):Provider {
  const send: Transport = async (url, init) => {
   try { return await transport(url, init); }
   catch {
    if (init?.signal?.aborted) throw init.signal.reason;
-   throw new ProviderError('Connessione al motore AI non disponibile.');
+   throw new ProviderError('Connessione al motore AI non disponibile.', 503);
   }
  };
  const {id,model,apiKey}=config;
@@ -63,7 +63,7 @@ export function createProvider(config:Config,transport:Transport=fetch):Provider
   if(id==='openrouter'){
    const data=await payload(await send('https://openrouter.ai/api/v1/models',{signal:AbortSignal.any([signal, AbortSignal.timeout(15000)]),redirect:'error'}));
    const found=data.data?.find((v:any)=>v.id===model),p=found?.pricing;
-   if(!p||p.prompt===undefined||p.completion===undefined||Object.values(p).some(v=>(typeof v!=='string'&&typeof v!=='number')||(typeof v==='string'&&!v.trim())||!Number.isFinite(Number(v))||Number(v)!==0))throw new ProviderError('Prezzo gratuito non verificato: chiamata bloccata.');
+   if(!p||p.prompt===undefined||p.completion===undefined||Object.values(p).some(v=>(typeof v!=='string'&&typeof v!=='number')||(typeof v==='string'&&!v.trim())||!Number.isFinite(Number(v))||Number(v)!==0))throw new ProviderError('Prezzo gratuito non verificato: chiamata bloccata.', 403);
   }return true;
  },async complete(prompt,signal){
   const ollama=id==='local', cloudflare=id==='cloudflare';
@@ -81,10 +81,10 @@ export function createProvider(config:Config,transport:Transport=fetch):Provider
      ? {messages,temperature:0.1,max_tokens:2000,stream:false}
      : {model,messages,temperature:0.1,max_tokens:4000,response_format:id==='llamacpp' ? {type:'json_object',schema:LLAMA_SPEC_SCHEMA} : {type:'json_object'}};
   const response=await payload(await send(urls[id],{method:'POST',headers:{'Content-Type':'application/json',...(localProvider(id)?{}:{Authorization:`Bearer ${apiKey}`})},body:JSON.stringify(body),signal,redirect:'error'}));
-  if(ollama&&response.done!==true)throw new ProviderError('Risposta locale incompleta.');
-  if(cloudflare&&response.success!==true)throw new ProviderError('Risposta Cloudflare non valida.');
-  if(response.choices?.[0]?.finish_reason==='length')throw new ProviderError('Risposta troncata: nessuna modifica applicata.');
+  if(ollama&&response.done!==true)throw new ProviderError('Risposta locale incompleta.', 502);
+  if(cloudflare&&response.success!==true)throw new ProviderError('Risposta Cloudflare non valida.', 502);
+  if(response.choices?.[0]?.finish_reason==='length')throw new ProviderError('Risposta troncata: nessuna modifica applicata.', 502);
   const content=ollama?response.message?.content:cloudflare?response.result?.response:response.choices?.[0]?.message?.content;
-  if(typeof content!=='string'||!content.trim())throw new ProviderError('Risposta AI vuota.');return content;
+  if(typeof content!=='string'||!content.trim())throw new ProviderError('Risposta AI vuota.', 502);return content;
  }};
 }

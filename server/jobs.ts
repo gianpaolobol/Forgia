@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import type {Storage} from '../src/core/storage.ts';
 import {text} from '../src/core/spec.ts';
 import {providerIds} from './providers.ts';
+import {knownRoutingStatus} from './routingFailure.ts';
 import {routingContext, type RoutingContext} from './routing.ts';
 
 type Input = {idea: string; provider: string; consent: boolean; context: RoutingContext};
@@ -60,7 +61,7 @@ export function createJobs<R>(store: Storage, run: (input: Input, backlog: numbe
       } catch (error) {
         terminal = {...identity, status: 'failed',
           error: error instanceof Error && !('code' in error) ? error.message : 'Elaborazione non riuscita.',
-          statusCode: error instanceof Error && 'status' in error && error.status === 429 ? 429 : undefined};
+          statusCode: error instanceof Error && 'status' in error && knownRoutingStatus(error.status) ? error.status : undefined};
       }
       await locked(async () => {
         const next = jobs.filter(item => item.id !== job.id);

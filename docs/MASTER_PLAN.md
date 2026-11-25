@@ -1,4 +1,4 @@
-# Forgia V1.0 — piano maestro v0.9
+# Forgia V1.0 — piano maestro v0.10
 Data: 2026-11-24. Stato: proposta, NON approvata da revisore indipendente. Revisore logico previsto: RV-01; identità/modello/sessione da registrare all'assegnazione. Non equiparare questo autore a un secondo agente. La baseline resta da revisionare; in modalità C sono consentite implementazioni reversibili su branch isolati, senza approvazione definitiva.
 
 ## Inventario verificato su GitHub
@@ -96,3 +96,6 @@ Baseline #9 a2d329cd, #8 a747090a. Modalità C: implementazione reversibile, RV-
 
 ## Addendum v0.9 — R07a/F08/F09 (25 novembre 2026)
 Base PR #10 382f81ac. Modalità C, RV-01 pendente. Validare l'intero snapshot account prima di associare un token; rifiutare qualsiasi ID o digest duplicato anche se scaduto, campi invalidi e timestamp UTC non canonici; lista vuota valida (revoca totale). Validazione all'avvio e ad ogni richiesta autenticata, senza cache permissiva. Errori di configurazione generici senza dati sensibili. Matrice: identità distinte, scadenza esatta, revoca, digest condiviso in entrambi gli ordini, ID duplicato con digest differente, voce malformata, snapshot corretto dopo errore, data impossibile. Dipende da R04/R08a. Non risolve R03 (revoca dopo accodamento), né prova TLS o file replacement concorrente; test integrati e RV-01 restano necessari. Autocontrollo non indipendente.
+
+## Addendum v0.10 — R11a/F04/F07 (25 novembre 2026)
+Base #11 5c4686f, modalità C; RV-01 pendente. Distinguere esclusione per quota/riserva da nessun candidato compatibile, 401/403 upstream, 502 risposta non valida, 503 rete/servizio, 504 timeout. Solo quota effettiva/riserva o tutti i tentativi in quota producono 429; errori misti mantengono una causa non quota con priorità deterministica. Nessun retry dello stesso provider; fallback gratuito consentito invariato; errori storage/policy non tipizzati interrompono. Messaggi aggregati fissi, nessun contenuto upstream sensibile. Conservare status noti nella coda/API (non confondere 401 del pilota con l'esito asincrono del job); R09 sospensione durevole e R10 quota atomica restano aperti. Test: nessun provider, consenso negato, contesto troppo grande, quota/riserva, auth, rete, risposta invalida, timeout, errori misti, fallback riuscito e storage. Test classificatore isolato e integrazione gateway; CI completa e revisione RV-01 necessarie. Autocontrollo non indipendente.

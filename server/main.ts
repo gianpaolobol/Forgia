@@ -8,6 +8,7 @@ import {createGateway} from './gateway.ts';
 import {parseFit} from './routing.ts';
 import {diskStorage} from './disk.ts';
 import {createJobs} from './jobs.ts';
+import {knownRoutingStatus} from './routingFailure.ts';
 const dataDirectory = resolve(process.env.FORGIA_DATA_DIR || '.data');
 const storage = diskStorage(dataDirectory);
 const gateway = createGateway(storage);
@@ -102,10 +103,12 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
  } catch (error) {
   if (res.destroyed) return;
   const failure = error as {status?: number; code?: string; message?: string};
-  const status = failure.status === 429 || failure.status === 413 ? failure.status : 400;
+  // A provider's 401/403 is not the client's authentication failure.
+  const upstreamStatus = knownRoutingStatus(failure.status) ? failure.status : undefined;
+  const status = upstreamStatus === 401 || upstreamStatus === 403 ? 502 : upstreamStatus ?? (failure.status === 413 ? 413 : 400);
   const message = error instanceof SyntaxError ? 'Risposta o richiesta JSON non valida.'
    : (session && failure.code ? undefined : failure.message);
-  reply(res, status, {error: message ?? 'Operazione non riuscita.'});
+  reply(res, status, {error: message ?? 'Operazione non riuscita.', statusCode: upstreamStatus});
  }
 }
 
