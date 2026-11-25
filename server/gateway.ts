@@ -3,6 +3,7 @@ import {validateSpec,text,type AppSpec} from '../src/core/spec.ts';
 import type {Storage} from '../src/core/storage.ts';
 import {ProviderError, localProvider, providerIds, type Provider} from './providers.ts';
 import {rankProviders, type RoutingContext} from './routing.ts';
+import {normalizeRoutingStatus, summarizeRoutingFailure, type RoutingFailureStatus} from './routingFailure.ts';
 type SpecCache = Record<string, AppSpec>;
 interface State {version:1;day:string;counts:Record<string,number>;cache:SpecCache;pilotCache:SpecCache}
 const queues=new WeakMap<Storage,Promise<unknown>>();
@@ -46,7 +47,7 @@ export function createGateway(store:Storage,{dailyLimit}:{dailyLimit?:number}={}
   if (cache[key]) return {spec: validateSpec(cache[key]), cached: true, requestsUsed: used};
   if ((cooldowns.get(provider.id) ?? 0) > Date.now()) throw new ProviderError('Motore in pausa dopo un limite remoto.', 429);
   if (used >= limit(provider)) throw new ProviderError('Quota giornaliera locale raggiunta: lavoro sospeso.', 429);
-  if (!await provider.eligible(signal)) throw new ProviderError('Fornitore gratuito non verificato.');
+  if (!await provider.eligible(signal)) throw new ProviderError('Fornitore gratuito non verificato.', 403);
   signal.throwIfAborted();
   state.counts[provider.id] = used + 1;
   await store.setItem('gateway.v1', JSON.stringify(state));
@@ -61,7 +62,7 @@ export function createGateway(store:Storage,{dailyLimit}:{dailyLimit?:number}={}
   try {
    spec = validateSpec(JSON.parse(output));
   } catch {
-   throw new ProviderError('Il modello ha restituito una specifica non valida.');
+   throw new ProviderError('Il modello ha restituito una specifica non valida.', 502);
   }
   cache[key] = spec;
   const keys = Object.keys(cache);
@@ -71,7 +72,17 @@ export function createGateway(store:Storage,{dailyLimit}:{dailyLimit?:number}={}
  }
 
  function plan(idea: string, provider: Provider, consent: boolean, scope?: string) {
-  return enqueue(async () => attempt(text(idea, 'Idea', 8000), provider, consent, await load(), AbortSignal.timeout(45000), scope));
+  return enqueue(async () => {
+   try {
+    return await attempt(text(idea, 'Idea', 8000), provider, consent, await load(), AbortSignal.timeout(45000), scope);
+   } catch (error) {
+    if (error instanceof DOMException && error.name === 'TimeoutError') {
+     const failure = summarizeRoutingFailure([504]);
+     throw new ProviderError(failure.message, failure.status);
+    }
+    throw error;
+   }
+  });
  }
 
  function planAuto(idea: string, providers: readonly Provider[], consent: boolean, context: RoutingContext, backlog = -1, scope?: string) {
@@ -82,21 +93,33 @@ export function createGateway(store:Storage,{dailyLimit}:{dailyLimit?:number}={}
    const remaining = Object.fromEntries(providers.map(p => [p.id, (cooldowns.get(p.id) ?? 0) > Date.now() ? 0 : limit(p) - (state.counts[p.id] ?? 0)]));
    const ranked = rankProviders(providers, context, prompt, consent, remaining, backlog);
    if (!ranked.length) {
-    throw new ProviderError('Nessun motore gratuito disponibile per questa richiesta. Verifica configurazione, consenso e quote.', 429);
+    // Re-rank without quota constraints to distinguish a quota exclusion from policy/capability.
+    const unlimited = Object.fromEntries(providers.map(p => [p.id, Infinity]));
+    const compatible = rankProviders(providers, context, prompt, consent, unlimited, backlog);
+    throw new ProviderError(compatible.length
+      ? 'Nessun motore gratuito disponibile: quota o riserva raggiunta.'
+      : 'Nessun motore gratuito compatibile: verifica configurazione, consenso e capacità.',
+      compatible.length ? 429 : 503);
    }
    const skipped: string[] = [];
+   const failures: RoutingFailureStatus[] = [];
    for (const {provider, reason} of ranked) {
-    deadline.throwIfAborted();
+    if (deadline.aborted) {
+     failures.push(504);
+     break;
+    }
     try {
      const result = await attempt(prompt, provider, consent, state, AbortSignal.any([deadline, AbortSignal.timeout(provider.mode === "local" ? 45000 : 14000)]), scope);
      return {...result, routing: {provider: provider.id, model: provider.model, reason, skipped}};
     } catch (error) {
      // Remote errors may permit a free fallback. Storage and policy errors stop the request.
      if (!(error instanceof ProviderError) && !(error instanceof DOMException && error.name === 'TimeoutError')) throw error;
+     failures.push(error instanceof ProviderError ? normalizeRoutingStatus(error.status) : 504);
      skipped.push(provider.id);
     }
    }
-   throw new ProviderError('I motori gratuiti compatibili non hanno completato la richiesta.', 429);
+   const failure = summarizeRoutingFailure(failures);
+   throw new ProviderError(failure.message, failure.status);
   });
  }
 
