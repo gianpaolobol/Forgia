@@ -1,3 +1,4 @@
+import {readRemoteNodeStatus} from '../src/core/remoteStatusClient.ts';
 import {setTimeout as delay} from 'node:timers/promises';
 import {RemoteNodeStatus} from '../server/remoteNodeStatus.ts';
 import {RemoteHeartbeatAgent} from '../server/remoteHeartbeatAgent.ts';
@@ -42,6 +43,16 @@ async function readCredential() {
 
 async function main(args: string[]) {
   const [cmd,dir,a,b,c] = args;
+  // Read-only operator command, no database or administrative access required.
+  if (cmd === 'status' && args.length === 2) {
+    const port = integer(dir,1,65535);
+    if (port === 8787) throw Error('Gateway port forbidden');
+    const token = await readCredential();
+    const status = await readRemoteNodeStatus(port,token);
+    if (stop.signal.aborted) throw Error('Status interrupted');
+    console.log(JSON.stringify(status));
+    return;
+  }
   if (!dir) throw Error('Missing state directory');
   if (cmd === 'serve' && args.length === 3) {
     const host = await startRemoteLocalHost(dir,integer(a,1,65535));
