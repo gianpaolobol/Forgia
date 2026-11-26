@@ -2,7 +2,7 @@
 
 Il titolare ha approvato lo sviluppo dopo il confronto dei generatori e poi chiarito due vincoli: API gratuite/modelli aperti inizialmente, e percorso da descrizione verbale a bozza e revisioni con deleghe per operazioni autonome. Pagamenti solo capacità futura: ora budget zero.
 
-Implementazione iniziale terminata nei confini del README: client universale, generatore cataloghi offline, versioni, ZIP, gateway gratis e policy. I tre provider non hanno credenziali collegate; nessun modello è stato interrogato dal vivo. Nessun browser/account del cliente è controllato dal prodotto. Il testo può essere dettato tramite tastiera di sistema, non c'è registratore vocale Forgia.
+Implementazione iniziale terminata nei confini del README: client universale, generatore cataloghi offline, versioni, ZIP, gateway gratis e policy. llama.cpp ha generato una specifica reale per un catalogo Expo con Qwen2.5-0.5B-Instruct. Gli account cloud non hanno credenziali collegate. Nessun browser/account del cliente è controllato dal prodotto. Il testo può essere dettato tramite tastiera di sistema, non c'è registratore vocale Forgia.
 
 Il repository pubblico gianpaolobol/Forgia è la base per continuare lo sviluppo. Le impostazioni del pannello privato sono gestite separatamente.
 

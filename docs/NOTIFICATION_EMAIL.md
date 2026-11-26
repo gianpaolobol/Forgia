@@ -1,0 +1,10 @@
+# F14 N6 — email transactional adapter (candidato)
+26 novembre 2026. Base #56 fd2f79c7; nessuna integrazione con F09.
+Contratto ufficiale: https://developers.brevo.com/reference/send-transac-email e https://developers.brevo.com/docs/send-a-transactional-email (POST HTTPS /v3/smtp/email, api-key, 201 messageId). Piano pubblico: https://help.brevo.com/hc/en-us/articles/208589409-About-Brevo-s-pricing-plans (Free 300 invii/giorno). Non prova lo stato di un account specifico.
+- Binding locale singolo con attestazioni esplicite di consenso, account dedicato Free e mittente verificato dall'operatore; il codice non verifica il piano né il destinatario reale. Trasporto obbligatoriamente iniettato, nessuna configurazione runtime o segreto.
+- Cap conservativo configurabile 1–20 tentativi per giorno UTC per database dedicato, persistito prima di ogni tentativo; orologio indietro non azzera il cap. Non è un contatore globale del provider; vietato condividere account o ripristinare DB per riaprire quota.
+- Payload fisso, un solo destinatario, nessun progetto/link/credenziale nel corpo; TLS fisso senza redirect/retry. 201 con messageId è accettazione provider, non conferma recapito. Timeout, 429, auth, risposta ambigua o crash lasciano blocco persistente; revoca prevalente. Nessuna ripresa automatica; recovery manuale futuro dopo review.
+- Gate prima del primo invio: verificare piano Free e assenza di overage/add-on, mittente/domain, consenso destinatario, vault, account dedicato, audit/review e budget. Verificare un evento autorizzato e recapito effettivo. Non riutilizzare credenziali di altri progetti. Nessun invio ora.
+- Rollback: non istanziare il worker; mantenere DB/registro tentativi, revocare binding e preferenze; non cancellare ledger per riattivare. Schema additivo.
+## Matrice
+N6a opt-in, redazione, isolamento, cap/rollback; N6b errori/redirect/quota; N6c concorrenza/revoca; N6d crash/riavvio. Test predisposti, esito pendente; trasporto sintetico. CI cumulativa e RV-01 pendenti.

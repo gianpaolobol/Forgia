@@ -1,6 +1,6 @@
 import { validateSpec, type Project } from './spec.ts';
 export interface Storage {getItem(key:string):Promise<string|null>;setItem(key:string,value:string):Promise<void>}
-const PRIMARY='forgia.projects.v1',BACKUP=PRIMARY+'.backup';
+const PRIMARY='forgia.projects.v1';
 function decode(raw:string):Project[]{
  const data=JSON.parse(raw);
  if(data.version!==1||!Array.isArray(data.projects))throw Error('Formato salvataggio non valido');
@@ -12,23 +12,47 @@ function decode(raw:string):Project[]{
   return {id:p.id,spec:validateSpec(p.spec),...(revisions?{revisions}:{})};
  });
 }
-export function createRepository(store:Storage){
- let queue:Promise<unknown>=Promise.resolve();
- async function load():Promise<{projects:Project[];recovered:boolean}>{
-  const main=await store.getItem(PRIMARY),backup=await store.getItem(BACKUP);
-  if(main!==null){try{return {projects:decode(main),recovered:false};}catch{/* recover below */}}
-  if(backup!==null){try{return {projects:decode(backup),recovered:true};}catch{/* preserve damaged data */}}
-  if(main===null&&backup===null)return {projects:[],recovered:false};
-  throw Error('Salvataggio danneggiato: recupero necessario. I dati originali sono conservati.');
- }
- function save(projects:Project[]):Promise<void>{
-  const run=queue.then(async()=>{
-   const current=await load();
-   const next=JSON.stringify({version:1,projects});decode(next);
-   if(!current.recovered)await store.setItem(BACKUP,JSON.stringify({version:1,projects:current.projects}));
-   await store.setItem(PRIMARY,next);
-   if(await store.getItem(PRIMARY)!==next)throw Error('Scrittura non verificata: riprovare il salvataggio.');
-  });queue=run.catch(()=>{});return run;
- }
- return {load,save};
+export function createRepository(store: Storage) {
+  return createBackedRepository(store, PRIMARY, decode, projects => JSON.stringify({version: 1, projects}));
+}
+
+export function createBackedRepository<T>(
+  store: Storage,
+  primary: string,
+  decode: (raw: string) => T[],
+  encode: (projects: T[]) => string,
+  loadInitial: () => Promise<T[]> = async () => [],
+) {
+  const backupKey = primary + '.backup';
+  let queue: Promise<void> = Promise.resolve();
+
+  async function load(): Promise<{projects: T[]; recovered: boolean}> {
+    const main = await store.getItem(primary);
+    if (main !== null) {
+      try { return {projects: decode(main), recovered: false}; }
+      catch { /* Try the backup. */ }
+    }
+    const backup = await store.getItem(backupKey);
+    if (backup !== null) {
+      try { return {projects: decode(backup), recovered: true}; }
+      catch { /* Preserve both originals. */ }
+    }
+    if (main === null && backup === null) return {projects: await loadInitial(), recovered: false};
+    throw Error('Salvataggio danneggiato: recupero necessario. I dati originali sono conservati.');
+  }
+
+  function save(projects: T[]): Promise<void> {
+    const run = queue.then(async () => {
+      const next = encode(projects);
+      decode(next);
+      const current = await load();
+      if (!current.recovered) await store.setItem(backupKey, encode(current.projects));
+      await store.setItem(primary, next);
+      if (await store.getItem(primary) !== next) throw Error('Scrittura non verificata: riprovare il salvataggio.');
+    });
+    queue = run.catch(() => {});
+    return run;
+  }
+
+  return {load, save};
 }
