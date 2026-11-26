@@ -25,7 +25,7 @@ const server=createServer(async(req,res)=>{
   res.writeHead(404);res.end();
  }catch{res.writeHead(500);res.end();}
 });
-const cli=async(...args)=>JSON.parse((await promisify(execFile)(process.execPath,['--experimental-strip-types','scripts/superhandy.ts',...args],{env:{...process.env,FORGIA_DATA_DIR:data},encoding:'utf8',timeout:15000})).stdout);
+const cli=async(...args)=>JSON.parse((await promisify(execFile)(process.execPath,['--experimental-strip-types','scripts/superhandy.ts',...args],{env:{PATH:process.env.PATH,SystemRoot:process.env.SystemRoot,FORGIA_DATA_DIR:data},encoding:'utf8',timeout:15000})).stdout);
 try{
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(8787,'127.0.0.1',resolve);});
  writeFileSync(plan,JSON.stringify({project:'demo',planner:'planner',reviewer:'reviewer',executors:['one'],tasks:[{id:'a',depends:[],criterion:'Catalogo A'}]}),{mode:0o600});
