@@ -235,3 +235,15 @@ Issue #42, base #41 ee28abb8; RV-01 pendente. MP1 compatibilità snapshot legacy
 
 ## Addendum v0.30 — F05/F07/F09 recupero ricevuta web (26 novembre 2026)
 Issue #45, base #43 cb2ff9a9, RV-01 pendente. RR1 lookup SQLite sessione+chiave in sola lettura, RR2 GET esclusivo gateway SQLite loopback (mai pilota TLS o legacy), RR3 marker submitting web e chiave originale, persistenza ricevuta prima del polling, nessun POST su errore; RR4 regressioni e prova HTTP/UI cumulativa. RR1/RR3 helper PASS in harness isolato su SQLite reale con schema fixture; regressione jobRecovery 3/3 PASS. RR2/RR4 HTTP/main e UI browser NON eseguiti, smoke aggiornato. Non è auth multiutente, recupero nativo o prova di provider reale. #44 documentazione indipendente, non sovrascritta. Nessun merge, nessuna spesa.
+
+## Addendum v0.31 — F14 Notification Hub (26 novembre 2026)
+Mandato del titolare: issue #46, lotto isolato da #47 88762f57, senza sostituire F00–F13. F09 controllo remoto sicuro e F13 collaudo cumulativo rimangono P0. F14 dipende da F08/F09 per ingress remoti autenticati e F10 per UI; sviluppare core reversibile in parallelo, integrare solo dopo RV-01 e CI sul candidato consolidato.
+| ID | Deliverable e criterio | Stato |
+|---|---|---|
+| N1 | Schema v1, riepilogo a vocabolario chiuso, URL evidenza ristretto, SQLite inbox, lettura, isolamento logico, conflitto dedup persistente | 2 test PASS |
+| N2 | Preferenze progetto/canale default off, outbox atomica, revoca e no replay duplicati; poi lease/fencing, retry solo esito certamente non inviato, dead-letter, audit, quiet hours/digest e cap | 2 test PASS per enqueue/revoca/rollback; worker e scheduling mancanti |
+| N3 | Ingress Forgia e GitHub autenticati, firma e anti-replay, source mapping, limiti, identity binding; handoff AI esplicito | aperto |
+| N4 | Email autorizzata, Telegram opt-in e push supportate, free-first verificato, credenziali server, destinatari verificati, revoca e test consegna | aperto |
+| N5 | UI inbox responsive, stato canali, filtri, digest/quiet hours, test iPhone/Android e desktop | aperto |
+| N6 | Evento sintetico e reale autorizzato end-to-end fino a canale gratuito, CI, documentazione configurazione/costi e rollback, review RV-01 | aperto |
+N1/N2 sono libreria non collegata al gateway, nessuna API remota, nessun invio. Owner è un argomento fidato, non autenticazione. Non trattare gli identificatori come dati anonimi; adapter dovrà derivarli da fonti autorizzate e non inviarli senza consenso. Vietati WhatsApp Web e scraping; valutare ntfy e WhatsApp ufficiale solo separatamente, senza nuove spese. Non riattivare record revocati. Rollback del lotto: non integrare il branch; nessuna migrazione sul DB operativo o configurazione esterna eseguita. Node22 test isolati 4/4 PASS e typecheck isolato PASS; Node24/CI e tutti i gate di prodotto ancora aperti.
