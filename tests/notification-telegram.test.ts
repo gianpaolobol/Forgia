@@ -48,7 +48,7 @@ test('N5 429 pauses durably, uncertain delivery not replayed, recipient cannot b
     assert.equal(resumed.state(),'paused');assert.equal(await resumed.runOnce(()=>100_000),false);
     const other=new NotificationTelegram(db,{...config,chatId:456},async()=>{throw Error('unexpected');});
     assert.equal(other.state(),'inactive');assert.throws(()=>other.activate());assert.throws(()=>other.revoke());
-    resumed.resume();assert.equal(await resumed.runOnce(()=>100_000),true);assert.equal(calls,2);
+    assert.throws(()=>resumed.resume(60_099));resumed.resume(60_100);assert.equal(await resumed.runOnce(()=>100_000),true);assert.equal(calls,2);
     const status=new NotificationDelivery(db).status('alice');
     assert.equal(status.find(x=>x.id==='first')?.state,'uncertain');assert.equal(status.find(x=>x.id==='next')?.state,'sent');
     resumed.revoke();assert.equal(resumed.state(),'revoked');assert.throws(()=>resumed.resume());
