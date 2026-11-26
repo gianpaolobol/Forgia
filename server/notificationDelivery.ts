@@ -9,6 +9,20 @@ type Delivery = { project: string; event: ReturnType<typeof normalizeNotificatio
 const validId = (v: string) => typeof v === 'string' && /^[a-zA-Z0-9_-]{1,96}$/.test(v);
 const validChannel = (v: string) => ['email','telegram','push'].includes(v);
 const MAX_ATTEMPTS = 3, LEASE_MS = 60_000;
+type Policy = { quietStartUtcMinute: number | null; quietEndUtcMinute: number | null; minGapMs: number };
+const DEFAULT_POLICY: Policy = {quietStartUtcMinute:null,quietEndUtcMinute:null,minGapMs:1000};
+const utcMinute = (now: number) => Math.floor(now / 60_000) % 1440;
+function isQuiet(p: Policy, now: number) {
+  const a=p.quietStartUtcMinute, b=p.quietEndUtcMinute, m=utcMinute(now);
+  return a!==null && b!==null && (a<b ? m>=a && m<b : m>=a || m<b);
+}
+function validPolicy(p: Policy) {
+  const minute=(x: number|null) => x===null || Number.isInteger(x) && x>=0 && x<1440;
+  return !!p && minute(p.quietStartUtcMinute) && minute(p.quietEndUtcMinute) &&
+    ((p.quietStartUtcMinute===null && p.quietEndUtcMinute===null) ||
+     (p.quietStartUtcMinute!==null && p.quietEndUtcMinute!==null && p.quietStartUtcMinute!==p.quietEndUtcMinute)) &&
+    Number.isSafeInteger(p.minGapMs) && p.minGapMs>=1000 && p.minGapMs<=86_400_000;
+}
 function clock(now: number) {
   if (!Number.isSafeInteger(now) || now < 0 || now > Number.MAX_SAFE_INTEGER - 600_000) throw new Error('Invalid clock');
 }
@@ -27,25 +41,60 @@ export class NotificationDelivery {
       owner TEXT NOT NULL, source TEXT NOT NULL, id TEXT NOT NULL, channel TEXT NOT NULL,
       state TEXT NOT NULL CHECK(state IN ('leased','sending','retry','sent','dead','uncertain','revoked')),
       fence TEXT NOT NULL, expires INTEGER NOT NULL, attempts INTEGER NOT NULL, eligible INTEGER NOT NULL,
-      PRIMARY KEY(owner,source,id,channel));`);
+      PRIMARY KEY(owner,source,id,channel));
+      CREATE TABLE IF NOT EXISTS notification_delivery_policy (
+      owner TEXT NOT NULL, channel TEXT NOT NULL, quiet_start INTEGER, quiet_end INTEGER,
+      min_gap INTEGER NOT NULL, PRIMARY KEY(owner,channel));
+      CREATE TABLE IF NOT EXISTS notification_delivery_pace (
+      owner TEXT NOT NULL, channel TEXT NOT NULL, last_dispatch INTEGER NOT NULL,
+      PRIMARY KEY(owner,channel));`);
   }
   private atomic<T>(fn: () => T): T {
     this.db.exec('BEGIN IMMEDIATE');
     try { const result=fn(); this.db.exec('COMMIT'); return result; }
     catch(e) { this.db.exec('ROLLBACK'); throw e; }
   }
+  // UTC only: callers must not present this as local-time/DST scheduling.
+  // Local trusted administration; not an authentication or recipient-binding API.
+  setPolicy(owner: string, channel: Channel, policy: Policy) {
+    scope(owner,channel);
+    if (!validPolicy(policy)) throw new Error('Invalid delivery policy');
+    this.atomic(() => {
+      this.db.prepare(`INSERT INTO notification_delivery_policy VALUES (?,?,?,?,?)
+        ON CONFLICT(owner,channel) DO UPDATE SET quiet_start=excluded.quiet_start,
+        quiet_end=excluded.quiet_end,min_gap=excluded.min_gap`).run(owner,channel,
+        policy.quietStartUtcMinute,policy.quietEndUtcMinute,policy.minGapMs);
+    });
+  }
+  private policy(owner: string, channel: Channel): Policy {
+    const row=this.db.prepare('SELECT quiet_start,quiet_end,min_gap FROM notification_delivery_policy WHERE owner=? AND channel=?').get(owner,channel);
+    if (!row) return DEFAULT_POLICY;
+    const p={quietStartUtcMinute:row.quiet_start as number|null,quietEndUtcMinute:row.quiet_end as number|null,minGapMs:row.min_gap as number};
+    if (!validPolicy(p)) throw new Error('Invalid persisted delivery policy');
+    return p;
+  }
+  private paced(owner: string, channel: Channel, p: Policy, now: number) {
+    const row=this.db.prepare('SELECT last_dispatch FROM notification_delivery_pace WHERE owner=? AND channel=?').get(owner,channel);
+    if (!row) return false;
+    const last=Number(row.last_dispatch); clock(last);
+    // Clock rollback never opens the throttle early. Avoid overflow in last + gap.
+    return now<last || now-last<p.minGapMs;
+  }
   claim(owner: string, channel: Channel, now = Date.now()): Claim | null {
     scope(owner,channel); clock(now);
     return this.atomic(() => {
       // After send intent, even an expired lease cannot be reclaimed for retry.
       this.db.prepare(`UPDATE notification_delivery SET state='uncertain' WHERE owner=? AND channel=? AND state='sending' AND expires<=?`).run(owner,channel,now);
+      const p=this.policy(owner,channel);
+      if (this.paced(owner,channel,p,now)) return null;
       const row=this.db.prepare(`SELECT o.source,o.id,COALESCE(d.attempts,0) AS attempts
         FROM notification_outbox o JOIN notification_events e USING(owner,source,id)
         JOIN notification_preferences p ON p.owner=o.owner AND p.project=o.project AND p.channel=o.channel AND p.enabled=1
         LEFT JOIN notification_delivery d USING(owner,source,id,channel)
         WHERE o.owner=? AND o.channel=? AND o.state='pending' AND
+          (?=0 OR json_extract(e.payload,'$.severity')='critical') AND
           (d.state IS NULL OR (d.state='leased' AND d.expires<=?) OR (d.state='retry' AND d.eligible<=?))
-        ORDER BY e.received,o.source,o.id LIMIT 1`).get(owner,channel,now,now);
+        ORDER BY e.received,o.source,o.id LIMIT 1`).get(owner,channel,Number(isQuiet(p,now)),now,now);
       if (!row) return null;
       const c: Claim={owner,channel,source:String(row.source),id:String(row.id),fence:randomUUID()};
       this.db.prepare(`INSERT INTO notification_delivery VALUES (?,?,?,?,'leased',?,?,?,0)
@@ -70,6 +119,16 @@ export class NotificationDelivery {
       const stored=JSON.parse(String(row.payload)); const {summary: _summary,...input}=stored;
       const event=normalizeNotification(input);
       if (event.source!==c.source || event.id!==c.id || event.project!==row.project) throw new Error('Event mismatch');
+      const p=this.policy(c.owner,c.channel);
+      if (this.paced(c.owner,c.channel,p,now) || (isQuiet(p,now) && event.severity!=='critical')) {
+        // Another worker or a changed policy may close the gate after claim.
+        // Release the lease without consuming an attempt or invoking the adapter.
+        this.db.prepare(`UPDATE notification_delivery SET state='retry',eligible=? WHERE owner=? AND source=? AND id=? AND channel=? AND fence=?`).run(now,...key(c),c.fence);
+        return null;
+      }
+      // Reserve before the external side effect, in the same transaction as send intent.
+      this.db.prepare(`INSERT INTO notification_delivery_pace VALUES (?,?,?)
+        ON CONFLICT(owner,channel) DO UPDATE SET last_dispatch=excluded.last_dispatch`).run(c.owner,c.channel,now);
       this.db.prepare(`UPDATE notification_delivery SET state='sending',attempts=attempts+1,expires=? WHERE owner=? AND source=? AND id=? AND channel=? AND fence=?`).run(now+LEASE_MS,...key(c),c.fence);
       return {project:event.project,event,channel:c.channel};
     });

@@ -69,3 +69,67 @@ test('N2 transport exception is uncertain, not retried; owner scope separate',as
     assert.equal(sends,1);
   } finally {db.close();}
 });
+
+test('N2 quiet hours UTC wrap midnight, critical bypass, ordinary event deferred without attempt',()=>{
+  const db=new DatabaseSync(':memory:');
+  try {
+    const hub=new NotificationHub(db), worker=new NotificationDelivery(db);
+    hub.setPreference('alice',event.project,'telegram',true);
+    hub.publish('alice',{...event,id:'ordinary',severity:'info'},1);
+    hub.publish('alice',{...event,id:'critical'},2);
+    worker.setPolicy('alice','telegram',{quietStartUtcMinute:1320,quietEndUtcMinute:420,minGapMs:1000});
+    const night=23*3600000;
+    const c=worker.claim('alice','telegram',night)!;
+    assert.equal(c.id,'critical');
+    assert.ok(worker.begin(c,night)); assert.ok(worker.finish(c,'sent',night));
+    assert.equal(worker.claim('alice','telegram',24*3600000+6*3600000),null);
+    assert.equal(worker.status('alice').find(r=>r.id==='ordinary')?.attempts,0);
+    const morning=31*3600000;
+    const next=worker.claim('alice','telegram',morning)!;
+    assert.equal(next.id,'ordinary'); assert.ok(worker.begin(next,morning));
+  } finally {db.close();}
+});
+test('N2 persistent dispatch pacing across workers, restart and clock rollback',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'forgia-pace-')); const file=join(dir,'db.sqlite');
+  const a=new DatabaseSync(file); let b=new DatabaseSync(file);
+  try {
+    const {hub,worker}=fixture(a); let second=new NotificationDelivery(b);
+    hub.publish('alice',{...event,id:'event2'},102);
+    hub.setPreference('bob',event.project,'telegram',true); hub.publish('bob',event,101);
+    worker.setPolicy('alice','telegram',{quietStartUtcMinute:null,quietEndUtcMinute:null,minGapMs:5000});
+    const first=worker.claim('alice','telegram',10000)!;
+    const other=second.claim('alice','telegram',10000)!;
+    assert.ok(worker.begin(first,10000)); assert.ok(worker.finish(first,'sent',10001));
+    assert.equal(second.begin(other,10001),null);
+    assert.equal(second.status('alice').find(r=>r.id==='event2')?.attempts,0);
+    b.close(); b=new DatabaseSync(file); second=new NotificationDelivery(b);
+    assert.equal(second.claim('alice','telegram',9000),null);
+    assert.equal(second.claim('alice','telegram',14999),null);
+    const separate=second.claim('bob','telegram',10001)!;
+    assert.ok(second.begin(separate,10001)); assert.ok(second.finish(separate,'sent',10002));
+    const next=second.claim('alice','telegram',15000)!;
+    assert.equal(next.id,'event2'); assert.ok(second.begin(next,15000));
+  } finally {a.close();b.close();rmSync(dir,{recursive:true,force:true});}
+});
+test('N2 policy change after claim rechecks quiet hours; invalid policy rejected; revocation wins',()=>{
+  const db=new DatabaseSync(':memory:');
+  try {
+    const hub=new NotificationHub(db), worker=new NotificationDelivery(db);
+    hub.setPreference('alice',event.project,'email',true);
+    hub.publish('alice',{...event,severity:'info'},101);
+    const now=8*3600000, c=worker.claim('alice','email',now)!;
+    for(const p of [
+      {quietStartUtcMinute:1,quietEndUtcMinute:null,minGapMs:1000},
+      {quietStartUtcMinute:1,quietEndUtcMinute:1,minGapMs:1000},
+      {quietStartUtcMinute:null,quietEndUtcMinute:null,minGapMs:0},
+    ]) assert.throws(()=>worker.setPolicy('alice','email',p));
+    worker.setPolicy('alice','email',{quietStartUtcMinute:480,quietEndUtcMinute:540,minGapMs:1000});
+    assert.equal(worker.begin(c,now),null);
+    assert.equal(worker.status('alice')[0].attempts,0);
+    worker.setPolicy('alice','email',{quietStartUtcMinute:null,quietEndUtcMinute:null,minGapMs:1000});
+    const next=worker.claim('alice','email',now)!;
+    hub.setPreference('alice',event.project,'email',false);
+    assert.equal(worker.begin(next,now),null);
+    assert.equal(worker.status('alice')[0].state,'revoked');
+  } finally {db.close();}
+});
