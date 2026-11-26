@@ -301,5 +301,5 @@ Autocontrollo 26 novembre 2026 su checkpoint 30afe736b4630c450813e3e1f3da317f063
 
 
 ## 2026-11-26 — F14 N5 adapter Telegram opt-in
-- Verificati main f8e64a98, backup iteration-30 (130 commit dietro #52, nessun commit divergente da main), #52 e4af5712 CI 45824683058 success, #55 a93d44f1 senza run PR; review #52/#55 vuote. Letti documenti previsti e issue #46/commenti. Assegnazione isolata su #46 prima delle modifiche.
+- Verificati main f8e64a98, backup iteration-30 (130 commit avanti a main, 0 indietro), #52 e4af5712 CI 45824683058 success, #55 a93d44f1 senza run PR; review #52/#55 vuote. Letti documenti previsti e issue #46/commenti. Assegnazione isolata su #46 prima delle modifiche.
 - Implementati server/notificationTelegram.ts e tests/notification-telegram.test.ts: pin locale dedicato, backlog revocato, opt-in per progetto, redazione, invio free-only, pause persistente 429/uncertain e retry window, revoca. Quattro test predisposti non eseguiti; clone locale DNS GitHub non disponibile. Nessun provider reale, costo, esposizione, agente indipendente o modifica workflow. Documentazione docs/NOTIFICATION_TELEGRAM.md. Prossimo: CI, review, vault/pairing reale, email/push/UI e prova fisica; F09 separato.
