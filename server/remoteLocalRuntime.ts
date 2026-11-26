@@ -7,8 +7,8 @@ import {listenRemoteStatus} from './remoteStatusHttp.ts';
 // Only an already private, local directory owned/controlled by the operator.
 // Windows ACLs must be provisioned and verified out of band; POSIX checks are
 // an additional guard, not a substitute for a trustworthy local OS.
-export function openRemoteLocalDb(directory: string, role: 'control' | 'agent') {
-  if (!isAbsolute(directory) || (role !== 'control' && role !== 'agent'))
+export function openRemoteLocalDb(directory: string, role: 'control' | 'agent' | 'vault') {
+  if (!isAbsolute(directory) || (role !== 'control' && role !== 'agent' && role !== 'vault'))
     throw Error('Invalid local state configuration');
   const dir = resolve(directory);
   const info = lstatSync(dir);
@@ -17,7 +17,7 @@ export function openRemoteLocalDb(directory: string, role: 'control' | 'agent') 
   const uid = process.getuid?.();
   if (uid !== undefined && (info.uid !== uid || (info.mode & 0o077) !== 0))
     throw Error('Local state directory must be private');
-  const path = join(dir, role === 'control' ? 'control.sqlite' : 'agent.sqlite');
+  const path = join(dir, role === 'control' ? 'control.sqlite' : role === 'agent' ? 'agent.sqlite' : 'credentials.sqlite');
   try { closeSync(openSync(path,'wx',0o600)); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
   const file = lstatSync(path);

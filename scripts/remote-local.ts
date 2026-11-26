@@ -1,5 +1,6 @@
 import {readRemoteNodeStatus} from '../src/core/remoteStatusClient.ts';
 import {setTimeout as delay} from 'node:timers/promises';
+import {RemoteCredentialVault,type VaultRole} from '../server/remoteCredentialVault.ts';
 import {RemoteNodeStatus} from '../server/remoteNodeStatus.ts';
 import {RemoteHeartbeatAgent} from '../server/remoteHeartbeatAgent.ts';
 import {openRemoteLocalDb,startRemoteLocalHost} from '../server/remoteLocalRuntime.ts';
@@ -15,7 +16,7 @@ function integer(value: string | undefined, min: number, max: number) {
   return n;
 }
 
-async function readCredential() {
+async function readSecretLines(count: 1 | 2) {
   // No command-line or environment secrets. An approved local vault process
   // supplies exactly one token followed by EOF on a private pipe.
   if (process.stdin.isTTY) throw Error('Credential pipe required');
@@ -29,21 +30,50 @@ async function readCredential() {
     for await (const chunk of process.stdin) {
       const bytes = Buffer.from(chunk);
       size += bytes.length;
-      if (size > 66) throw Error('Invalid credential');
+      if (size > 66*count) throw Error('Invalid credential');
       chunks.push(bytes);
     }
   } finally {
     clearTimeout(timer);
     stop.signal.removeEventListener('abort',abort);
   }
-  const token = Buffer.concat(chunks).toString('utf8').replace(/\r?\n$/,'');
-  if (!/^[a-f0-9]{64}$/.test(token)) throw Error('Invalid credential');
-  return token;
+  const combined=Buffer.concat(chunks);
+  try {
+    const lines=combined.toString('utf8').replace(/\r?\n$/,'').split(/\r?\n/);
+    if (lines.length!==count || lines.some(line=>!/^[a-f0-9]{64}$/.test(line)))
+      throw Error('Invalid credential');
+    return lines;
+  } finally { combined.fill(0); for (const chunk of chunks) chunk.fill(0); }
+}
+async function readCredential() { return (await readSecretLines(1))[0]; }
+async function readVaultCredential(directory: string,role: VaultRole) {
+  const key=await readCredential();
+  const db=openRemoteLocalDb(directory,'vault');
+  try { return new RemoteCredentialVault(db).read(role,key); }
+  finally { db.close(); }
 }
 
 async function main(args: string[]) {
   const [cmd,dir,a,b,c] = args;
-  // Read-only operator command, no database or administrative access required.
+  // Import an already issued credential via private stdin only; never issue
+  // a grant or print the token. The vault directory is independently private.
+  if (cmd === 'vault-import' && args.length === 3 && dir && (a==='node' || a==='operator')) {
+    const [key,token]=await readSecretLines(2);
+    const db=openRemoteLocalDb(dir,'vault');
+    try { new RemoteCredentialVault(db).import(a,key,token); }
+    finally { db.close(); }
+    console.log('Encrypted credential imported.');
+    return;
+  }
+  if (cmd === 'status-vault' && args.length === 3 && dir) {
+    const port=integer(a,1,65535);
+    if (port===8787) throw Error('Gateway port forbidden');
+    const status=await readRemoteNodeStatus(port,await readVaultCredential(dir,'operator'));
+    if (stop.signal.aborted) throw Error('Status interrupted');
+    console.log(JSON.stringify(status));
+    return;
+  }
+  // Read-only operator command, no control database or administrative access required.
   if (cmd === 'status' && args.length === 2) {
     const port = integer(dir,1,65535);
     if (port === 8787) throw Error('Gateway port forbidden');
@@ -63,9 +93,10 @@ async function main(args: string[]) {
     } finally { await host.close(); }
     return;
   }
-  if (cmd === 'agent' && args.length === 3) {
+  if ((cmd === 'agent' && args.length === 3) || (cmd === 'agent-vault' && args.length === 4 && b)) {
     const port = integer(a,1,65535);
-    const token = await readCredential();
+    if (port===8787) throw Error('Gateway port forbidden');
+    const token = cmd==='agent-vault' ? await readVaultCredential(b!,'node') : await readCredential();
     const db = openRemoteLocalDb(dir,'agent');
     try {
       const agent = new RemoteHeartbeatAgent(db,port,token);
