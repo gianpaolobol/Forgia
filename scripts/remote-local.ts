@@ -1,5 +1,6 @@
 import {readRemoteNodeStatus} from '../src/core/remoteStatusClient.ts';
 import {setTimeout as delay} from 'node:timers/promises';
+import {initializeWindowsVaultKey,readWindowsVaultKey,assertSeparateWindowsVault} from '../server/remoteWindowsKey.ts';
 import {RemoteCredentialVault,type VaultRole} from '../server/remoteCredentialVault.ts';
 import {RemoteNodeStatus} from '../server/remoteNodeStatus.ts';
 import {RemoteHeartbeatAgent} from '../server/remoteHeartbeatAgent.ts';
@@ -46,8 +47,8 @@ async function readSecretLines(count: 1 | 2) {
   } finally { combined.fill(0); for (const chunk of chunks) chunk.fill(0); }
 }
 async function readCredential() { return (await readSecretLines(1))[0]; }
-async function readVaultCredential(directory: string,role: VaultRole) {
-  const key=await readCredential();
+async function readVaultCredential(directory: string,role: VaultRole,keyDirectory?:string) {
+  const key=keyDirectory ? (assertSeparateWindowsVault(directory,keyDirectory),readWindowsVaultKey(keyDirectory)) : await readCredential();
   const db=openRemoteLocalDb(directory,'vault');
   try { return new RemoteCredentialVault(db).read(role,key); }
   finally { db.close(); }
@@ -55,6 +56,21 @@ async function readVaultCredential(directory: string,role: VaultRole) {
 
 async function main(args: string[]) {
   const [cmd,dir,a,b,c] = args;
+  if (cmd==='vault-key-init' && args.length===2 && dir) {
+    initializeWindowsVaultKey(dir);
+    console.log('Windows protected key initialized.');
+    return;
+  }
+  if (cmd==='vault-import-os' && args.length===4 && dir && b && (a==='node' || a==='operator')) {
+    assertSeparateWindowsVault(dir,b);
+    const token=await readCredential();
+    const key=readWindowsVaultKey(b);
+    const db=openRemoteLocalDb(dir,'vault');
+    try { new RemoteCredentialVault(db).import(a,key,token); }
+    finally { db.close(); }
+    console.log('Encrypted credential imported.');
+    return;
+  }
   // Import an already issued credential via private stdin only; never issue
   // a grant or print the token. The vault directory is independently private.
   if (cmd === 'vault-import' && args.length === 3 && dir && (a==='node' || a==='operator')) {
@@ -65,10 +81,10 @@ async function main(args: string[]) {
     console.log('Encrypted credential imported.');
     return;
   }
-  if (cmd === 'status-vault' && args.length === 3 && dir) {
+  if (dir && ((cmd === 'status-vault' && args.length === 3) || (cmd==='status-os' && args.length===4 && b))) {
     const port=integer(a,1,65535);
     if (port===8787) throw Error('Gateway port forbidden');
-    const status=await readRemoteNodeStatus(port,await readVaultCredential(dir,'operator'));
+    const status=await readRemoteNodeStatus(port,await readVaultCredential(dir,'operator',cmd==='status-os' ? b : undefined));
     if (stop.signal.aborted) throw Error('Status interrupted');
     console.log(JSON.stringify(status));
     return;
@@ -93,10 +109,10 @@ async function main(args: string[]) {
     } finally { await host.close(); }
     return;
   }
-  if ((cmd === 'agent' && args.length === 3) || (cmd === 'agent-vault' && args.length === 4 && b)) {
+  if ((cmd === 'agent' && args.length === 3) || (cmd === 'agent-vault' && args.length === 4 && b) || (cmd==='agent-os' && args.length===5 && b && c)) {
     const port = integer(a,1,65535);
     if (port===8787) throw Error('Gateway port forbidden');
-    const token = cmd==='agent-vault' ? await readVaultCredential(b!,'node') : await readCredential();
+    const token = cmd==='agent-vault' || cmd==='agent-os' ? await readVaultCredential(b!,'node',cmd==='agent-os' ? c : undefined) : await readCredential();
     const db = openRemoteLocalDb(dir,'agent');
     try {
       const agent = new RemoteHeartbeatAgent(db,port,token);
