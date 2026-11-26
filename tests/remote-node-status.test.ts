@@ -59,12 +59,14 @@ test('RC3 revocation persists between independent connections and reopen',()=>{
   const path=join(dir,'status.db');
   let db=new DatabaseSync(path);
   try {
-    const api=new RemoteNodeStatus(db,()=>1000);api.register('pc');
+    let now=1000;
+    const api=new RemoteNodeStatus(db,()=>now);api.register('pc');
     const op=api.issue('pc','operator',100_000), node=api.issue('pc','node',100_000);
     api.heartbeat(node.token,1);
     const other=new DatabaseSync(path);
     try {
-      const second=new RemoteNodeStatus(other,()=>1100);
+      now=1100;
+      const second=new RemoteNodeStatus(other,()=>now);
       assert.equal(second.status(op.token).online,true);
       assert.throws(()=>second.heartbeat(node.token,1));
       assert.equal(second.revoke(node.id),true);
