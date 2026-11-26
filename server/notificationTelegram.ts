@@ -2,13 +2,14 @@ import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { request } from 'node:https';
 import { NotificationDelivery } from './notificationDelivery.ts';
+import { NotificationHub } from './notificationHub.ts';
 
 type Binding = { owner: string; chatId: number; token: string; consentVerified: true };
 type Reply = { status: number; body: string };
 type Transport = (path: string, body: string) => Promise<Reply>;
 const MAX_BODY = 64 * 1024;
 function fingerprint(b: Binding) {
-  if (!b || !/^[a-zA-Z0-9_-]{1,96}$/.test(b.owner) ||
+  if (!b || typeof b.owner !== 'string' || !/^[a-zA-Z0-9_-]{1,96}$/.test(b.owner) ||
       !Number.isSafeInteger(b.chatId) || b.chatId <= 0 ||
       typeof b.token !== 'string' || !/^[0-9]{1,20}:[a-zA-Z0-9_-]{20,100}$/.test(b.token) ||
       b.consentVerified !== true) throw new Error('Invalid Telegram binding');
@@ -54,6 +55,7 @@ export class NotificationTelegram {
   constructor(db: DatabaseSync, binding: Binding, transport: Transport = sendTelegram) {
     this.digest=fingerprint(binding);
     this.binding={...binding}; this.db=db; this.transport=transport;
+    new NotificationHub(db);
     this.delivery=new NotificationDelivery(db);
     db.exec(`CREATE TABLE IF NOT EXISTS notification_telegram_binding (
       singleton INTEGER PRIMARY KEY CHECK(singleton=1), owner TEXT NOT NULL,
@@ -101,6 +103,8 @@ export class NotificationTelegram {
     try {
       return await this.delivery.runOnce(this.binding.owner,'telegram',async d=>{
         if(this.state()!=='active') return 'not-sent';
+        const pending=this.db.prepare("SELECT COUNT(*) AS n FROM notification_delivery WHERE owner=? AND channel='telegram' AND state='sending'").get(this.binding.owner);
+        if(Number(pending?.n)!==1) return 'not-sent';
         // Only the redacted fixed summary; no project, evidence link, free text,
         // account information or tokens in the message. Details stay in inbox.
         const body=JSON.stringify({chat_id:this.binding.chatId,
