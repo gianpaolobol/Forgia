@@ -1,0 +1,52 @@
+name: Gemini CLI Assistant
+
+on:
+  issue_comment:
+    types: [created]
+  issues:
+    types: [opened]
+
+# Quarantena F01: l'action upstream esegue la CLI con --yolo.
+# Non rimuovere il blocco letterale false prima della review indipendente,
+# del pin della versione CLI, della verifica free-first e dei test di sicurezza.
+permissions:
+  contents: read
+
+concurrency:
+  group: gemini-assistant-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  gemini-assistant:
+    if: |
+      false &&
+      github.event.sender.login == github.repository_owner &&
+      (
+        (github.event_name == 'issues' && contains(github.event.issue.body, '@gemini-cli')) ||
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@gemini-cli'))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Run Gemini CLI (quarantined, no write permissions)
+        uses: google-github-actions/run-gemini-cli@f77273f4c914e4bf38440cf36a0369cb64a37489
+        with:
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          use_vertex_ai: 'false'
+          use_gemini_code_assist: 'false'
+          gemini_debug: 'false'
+          upload_artifacts: 'false'
+          prompt: |
+            Leggi AGENTS.md e GEMINI.md. Esamina soltanto il codice pubblico
+            del repository. Non modificare file, non usare shell o rete,
+            non leggere credenziali e non invocare altri agenti.
+            Scrivi una proposta di triage in italiano nel formato handoff.
+            Questo prototipo non legge il contenuto delle Issue/PR e non
+            pubblica commenti. Non dichiarare task eseguiti.
