@@ -108,7 +108,7 @@ export class NotificationTelegram {
       this.db.prepare("UPDATE notification_telegram_binding SET state='active',pause_until=0 WHERE singleton=1").run();
     });
   }
-  async runOnce(now=Date.now): Promise<boolean> {
+  async runOnce(now=Date.now, project?:string): Promise<boolean> {
     if(this.busy || this.state()!=='active') return false;
     this.busy=true;
     try {
@@ -145,7 +145,7 @@ export class NotificationTelegram {
         // Retry-After. Ambiguous outcomes are never replayed by the delivery worker.
         this.finishSend(false,pauseUntil);
         return 'uncertain';
-      },now);
+      },now,project);
     } finally { this.busy=false; }
   }
 }

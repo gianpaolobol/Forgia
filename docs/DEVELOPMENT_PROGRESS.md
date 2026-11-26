@@ -319,3 +319,7 @@ Run [45843594342](https://github.com/gianpaolobol/Forgia/actions/runs/4584359434
 
 ## 26 novembre 2026 — F14 N8 pannello locale
 #58 af57e00b: run 45871682353, 293/293 unit, quattro N7 PASS, TypeScript/web/iOS success, Android errore Gradle Foojay dopo test; rerun del job fallito richiesto. #52 e4af5712 CI verde separata. N8: pannello HTML locale autenticato, scope fisso, filtro inbox, evidenze, letto/revoca/digest via POST con Origin e CSRF, password effimera, solo loopback, nessun trasporto/attivazione. Tre test HTTP predisposti, esiti nuovi pendenti. Runbook docs/NOTIFICATION_LOCAL_DASHBOARD.md; nessuna apertura LAN, modifica workflow, costo o merge. RV-01 e verifiche fisiche/live pendenti.
+
+
+## 26 novembre 2026 — F14 N9 worker locale scoped
+#59 c4de11d4, run 45879597929 success su Android/iOS/web; #52 e4af5712 run 45824683058 success, review indipendenti assenti. Main f8e64a98, backup iteration-30 3550c197 verificati. N9 compone adapter email/Telegram nel runtime con trasporto esplicito, owner vincolato e filtro progetto atomico prima del claim; conserva pacing/cap owner-wide e comportamento legacy. Tre test predisposti, esiti pendenti. Nessun invio reale, attivazione, credenziale, esposizione, costo o merge. Vault/pairing, push, fisici, provider cloud e RV-01 aperti. Vedi docs/NOTIFICATION_SCOPED_WORKER.md.

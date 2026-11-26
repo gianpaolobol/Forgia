@@ -80,21 +80,22 @@ export class NotificationDelivery {
     // Clock rollback never opens the throttle early. Avoid overflow in last + gap.
     return now<last || now-last<p.minGapMs;
   }
-  claim(owner: string, channel: Channel, now = Date.now()): Claim | null {
+  claim(owner: string, channel: Channel, now = Date.now(), project?: string): Claim | null {
     scope(owner,channel); clock(now);
+    if(project!==undefined) normalizeNotification({version:1,id:'scope',source:'scope',project,type:'task.updated',severity:'info',timestamp:0,correlation_id:'scope'});
     return this.atomic(() => {
       // After send intent, even an expired lease cannot be reclaimed for retry.
-      this.db.prepare(`UPDATE notification_delivery SET state='uncertain' WHERE owner=? AND channel=? AND state='sending' AND expires<=?`).run(owner,channel,now);
+      this.db.prepare(`UPDATE notification_delivery SET state='uncertain' WHERE owner=? AND channel=? AND state='sending' AND expires<=? AND (? IS NULL OR EXISTS (SELECT 1 FROM notification_outbox o WHERE o.owner=notification_delivery.owner AND o.source=notification_delivery.source AND o.id=notification_delivery.id AND o.channel=notification_delivery.channel AND o.project=?))`).run(owner,channel,now,project??null,project??null);
       const p=this.policy(owner,channel);
       if (this.paced(owner,channel,p,now)) return null;
       const row=this.db.prepare(`SELECT o.source,o.id,COALESCE(d.attempts,0) AS attempts
         FROM notification_outbox o JOIN notification_events e USING(owner,source,id)
         JOIN notification_preferences p ON p.owner=o.owner AND p.project=o.project AND p.channel=o.channel AND p.enabled=1
         LEFT JOIN notification_delivery d USING(owner,source,id,channel)
-        WHERE o.owner=? AND o.channel=? AND o.state='pending' AND
+        WHERE o.owner=? AND o.channel=? AND o.state='pending' AND (? IS NULL OR o.project=?) AND
           (?=0 OR json_extract(e.payload,'$.severity')='critical') AND
           (d.state IS NULL OR (d.state='leased' AND d.expires<=?) OR (d.state='retry' AND d.eligible<=?))
-        ORDER BY e.received,o.source,o.id LIMIT 1`).get(owner,channel,Number(isQuiet(p,now)),now,now);
+        ORDER BY e.received,o.source,o.id LIMIT 1`).get(owner,channel,project??null,project??null,Number(isQuiet(p,now)),now,now);
       if (!row) return null;
       const c: Claim={owner,channel,source:String(row.source),id:String(row.id),fence:randomUUID()};
       this.db.prepare(`INSERT INTO notification_delivery VALUES (?,?,?,?,'leased',?,?,?,0)
@@ -148,8 +149,8 @@ export class NotificationDelivery {
   }
   // Adapter must classify not-sent ONLY when non-delivery is proven. Timeout/exception => uncertain.
   // Invoke only with a separately authorized, free adapter and verified recipient binding.
-  async runOnce(owner: string, channel: Channel, send: (delivery: Delivery) => Promise<Outcome>, now = Date.now): Promise<boolean> {
-    const c=this.claim(owner,channel,now()); if (!c) return false;
+  async runOnce(owner: string, channel: Channel, send: (delivery: Delivery) => Promise<Outcome>, now = Date.now, project?: string): Promise<boolean> {
+    const c=this.claim(owner,channel,now(),project); if (!c) return false;
     const delivery=this.begin(c,now()); if (!delivery) return false;
     let outcome: Outcome='uncertain';
     try { const result=await send(delivery); if (['sent','not-sent','uncertain'].includes(result)) outcome=result; } catch { /* no unsafe retry */ }

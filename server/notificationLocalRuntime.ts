@@ -4,6 +4,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {NotificationHub,normalizeNotification} from './notificationHub.ts';
 import {NotificationDigest} from './notificationDigest.ts';
 import {NotificationDelivery} from './notificationDelivery.ts';
+import {NotificationEmail} from './notificationEmail.ts';
+import {NotificationTelegram} from './notificationTelegram.ts';
 
 const tables=['notification_events','notification_preferences','notification_outbox',
   'notification_digest_schedule','notification_digest_seen','notification_digest_inbox',
@@ -78,6 +80,18 @@ export class NotificationLocalRuntime{
   // Only disable external channels here. Enabling needs verified recipient,
   // account and vault gates, not an unauthenticated UI or local convenience toggle.
   revoke(channel:'email'|'telegram'|'push'){this.hub.setPreference(this.owner,this.project,channel,false);}
+  // Trusted local composition only. The caller must supply the authorized
+  // binding and transport. No activation, consent grant or default network call.
+  async deliverEmail(binding:ConstructorParameters<typeof NotificationEmail>[1],
+    transport:ConstructorParameters<typeof NotificationEmail>[2],now=Date.now){
+    if(binding.owner!==this.owner||typeof transport!=='function')throw Error('Invalid local delivery scope');
+    return new NotificationEmail(this.db,binding,transport).runOnce(now,this.project);
+  }
+  async deliverTelegram(binding:ConstructorParameters<typeof NotificationTelegram>[1],
+    transport:NonNullable<ConstructorParameters<typeof NotificationTelegram>[2]>,now=Date.now){
+    if(binding.owner!==this.owner||typeof transport!=='function')throw Error('Invalid local delivery scope');
+    return new NotificationTelegram(this.db,binding,transport).runOnce(now,this.project);
+  }
   snapshot(unread=false,limit=50){
     this.db.exec('BEGIN');
     try{

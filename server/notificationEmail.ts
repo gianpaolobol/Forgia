@@ -105,7 +105,7 @@ export class NotificationEmail {
         WHERE singleton=1 AND digest=? AND state='active'`).run(d,d,this.digest).changes===1;
     });
   }
-  async runOnce(now=Date.now):Promise<boolean>{
+  async runOnce(now=Date.now, project?:string):Promise<boolean>{
     if(this.busy||!this.eligible(now()))return false;
     this.busy=true;
     try{
@@ -129,7 +129,7 @@ export class NotificationEmail {
         // Any uncertain response (including quota/auth errors) leaves the channel
         // durably blocked. No automatic retry, plan upgrade or resume.
         return 'uncertain';
-      },now);
+      },now,project);
     }finally{this.busy=false;}
   }
 }
