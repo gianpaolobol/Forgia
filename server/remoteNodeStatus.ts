@@ -1,0 +1,119 @@
+import {createHash, randomBytes, randomUUID} from 'node:crypto';
+import type {DatabaseSync} from 'node:sqlite';
+
+// Local control-plane primitive. No listener, transport, shell, or remote enrollment.
+type Role = 'node' | 'operator';
+type Grant = {id: string; node: string; role: Role; seq: number; expires: number};
+const identifier = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+const tokenPattern = /^[a-f0-9]{64}$/;
+const digest = (token: string) => createHash('sha256').update(token).digest('hex');
+const denied = () => Error('Autorizzazione nodo non valida.');
+const maxTtl = 24 * 60 * 60 * 1000;
+const heartbeatWindow = 90_000;
+
+export class RemoteNodeStatus {
+  constructor(private readonly db: DatabaseSync, private readonly clock = Date.now) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS rc_nodes (
+        id TEXT PRIMARY KEY, seen INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS rc_grants (
+        id TEXT PRIMARY KEY, node TEXT NOT NULL REFERENCES rc_nodes(id),
+        role TEXT NOT NULL CHECK(role IN ('node','operator')),
+        digest TEXT UNIQUE NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL,
+        revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1)),
+        seq INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS rc_grants_scope ON rc_grants(node,role,revoked,expires);
+    `);
+  }
+
+  private now() {
+    const value = this.clock();
+    if (!Number.isSafeInteger(value) || value < 0 || value > Number.MAX_SAFE_INTEGER - maxTtl) throw denied();
+    return value;
+  }
+
+  private tx<T>(fn: () => T): T {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = fn();
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  // Trusted local administrator only; never expose this method through a remote route.
+  register(node: string) {
+    if (typeof node !== 'string' || !identifier.test(node)) throw denied();
+    this.db.prepare('INSERT INTO rc_nodes(id) VALUES (?) ON CONFLICT(id) DO NOTHING').run(node);
+  }
+
+  // Return the raw credential once; caller must transfer it privately. No log or storage of token.
+  issue(node: string, role: Role, ttlMs: number) {
+    if (typeof node !== 'string' || !identifier.test(node) ||
+        (role !== 'node' && role !== 'operator') ||
+        !Number.isSafeInteger(ttlMs) || ttlMs <= 0 || ttlMs > maxTtl) throw denied();
+    return this.tx(() => {
+      const now = this.now();
+      if (!this.db.prepare('SELECT id FROM rc_nodes WHERE id=?').get(node)) throw denied();
+      const id = randomUUID(), token = randomBytes(32).toString('hex');
+      if (role === 'node') {
+        // A replacement heartbeat credential cannot inherit the previous online state.
+        this.db.prepare("UPDATE rc_grants SET revoked=1 WHERE node=? AND role='node'").run(node);
+        this.db.prepare('UPDATE rc_nodes SET seen=NULL WHERE id=?').run(node);
+      }
+      this.db.prepare('INSERT INTO rc_grants(id,node,role,digest,created,expires) VALUES (?,?,?,?,?,?)')
+        .run(id,node,role,digest(token),now,now+ttlMs);
+      return {id, token, expiresAt: now+ttlMs};
+    });
+  }
+
+  revoke(id: string) {
+    if (typeof id !== 'string' || !/^[a-f0-9-]{36}$/.test(id)) throw denied();
+    return this.tx(() => {
+      const grant = this.db.prepare('SELECT node,role,revoked FROM rc_grants WHERE id=?').get(id);
+      if (!grant || grant.revoked !== 0) return false;
+      this.db.prepare('UPDATE rc_grants SET revoked=1 WHERE id=?').run(id);
+      if (grant.role === 'node') this.db.prepare('UPDATE rc_nodes SET seen=NULL WHERE id=?').run(grant.node as string);
+      return true;
+    });
+  }
+
+  private authorize(token: string, role: Role, now: number): Grant {
+    if (typeof token !== 'string' || !tokenPattern.test(token)) throw denied();
+    const row = this.db.prepare('SELECT id,node,role,seq,expires FROM rc_grants WHERE digest=? AND role=? AND revoked=0 AND created<=? AND expires>?')
+      .get(digest(token), role, now, now);
+    if (!row) throw denied();
+    return row as unknown as Grant;
+  }
+
+  heartbeat(token: string, sequence: number) {
+    if (!Number.isSafeInteger(sequence) || sequence <= 0) throw denied();
+    return this.tx(() => {
+      const now = this.now();
+      const grant = this.authorize(token,'node',now);
+      const node = this.db.prepare('SELECT seen FROM rc_nodes WHERE id=?').get(grant.node);
+      if (!node || sequence <= grant.seq || (typeof node.seen === 'number' && now < node.seen)) throw denied();
+      this.db.prepare('UPDATE rc_grants SET seq=? WHERE id=?').run(sequence,grant.id);
+      this.db.prepare('UPDATE rc_nodes SET seen=? WHERE id=?').run(now,grant.node);
+      return {accepted:true as const};
+    });
+  }
+
+  status(token: string): {node: string; online: boolean; lastSeenAt: number | null} {
+    return this.tx(() => {
+      const now = this.now();
+      const grant = this.authorize(token,'operator',now);
+      const row = this.db.prepare('SELECT seen FROM rc_nodes WHERE id=?').get(grant.node);
+      if (!row) throw denied();
+      const lastSeenAt = typeof row.seen === 'number' ? row.seen : null;
+      const active = this.db.prepare("SELECT 1 FROM rc_grants WHERE node=? AND role='node' AND revoked=0 AND created<=? AND expires>?")
+        .get(grant.node,now,now);
+      return {node:grant.node,online:!!active && lastSeenAt !== null && now >= lastSeenAt && now-lastSeenAt < heartbeatWindow,lastSeenAt};
+    });
+  }
+}
