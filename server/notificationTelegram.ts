@@ -59,14 +59,14 @@ export class NotificationTelegram {
     this.delivery=new NotificationDelivery(db);
     db.exec(`CREATE TABLE IF NOT EXISTS notification_telegram_binding (
       singleton INTEGER PRIMARY KEY CHECK(singleton=1), owner TEXT NOT NULL,
-      digest TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('active','paused','revoked')))`);
+      digest TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('active','paused','revoked')), pause_until INTEGER NOT NULL)`);
   }
   // Explicit first opt-in. Clear any pre-binding preferences/backlog; require
   // fresh per-project opt-in via NotificationHub after this operation.
   activate() {
     atomic(this.db,()=>{
       if(this.db.prepare('SELECT singleton FROM notification_telegram_binding').get()) throw new Error('Telegram binding already initialized');
-      this.db.prepare("INSERT INTO notification_telegram_binding VALUES (1,?,?,'active')").run(this.binding.owner,this.digest);
+      this.db.prepare("INSERT INTO notification_telegram_binding VALUES (1,?,?,'active',0)").run(this.binding.owner,this.digest);
       this.clearConsent();
     });
   }
@@ -86,15 +86,18 @@ export class NotificationTelegram {
       this.clearConsent();
     });
   }
-  private pause() {
-    this.db.prepare("UPDATE notification_telegram_binding SET state='paused' WHERE singleton=1 AND digest=? AND state='active'").run(this.digest);
+  private pause(until: number) {
+    this.db.prepare("UPDATE notification_telegram_binding SET state='paused',pause_until=? WHERE singleton=1 AND digest=? AND state='active'").run(until,this.digest);
   }
   // No automatic resume after rate-limit or ambiguous delivery. Only an explicit
   // operator action after checking provider status/limits; never replay uncertain rows.
-  resume() {
+  resume(now=Date.now()) {
+    if(!Number.isSafeInteger(now) || now<0) throw new Error('Invalid clock');
     atomic(this.db,()=>{
       if(this.state()!=='paused') throw new Error('Telegram binding not paused');
-      this.db.prepare("UPDATE notification_telegram_binding SET state='active' WHERE singleton=1").run();
+      const row=this.db.prepare('SELECT pause_until FROM notification_telegram_binding WHERE singleton=1').get();
+      if(!row || now<Number(row.pause_until)) throw new Error('Telegram retry window not elapsed');
+      this.db.prepare("UPDATE notification_telegram_binding SET state='active',pause_until=0 WHERE singleton=1").run();
     });
   }
   async runOnce(now=Date.now): Promise<boolean> {
@@ -110,8 +113,19 @@ export class NotificationTelegram {
         const body=JSON.stringify({chat_id:this.binding.chatId,
           text:'Forgia — '+d.event.summary+'. Dettagli nella inbox.',
           protect_content:true,allow_paid_broadcast:false});
+        let pauseUntil=0;
         try {
           const reply=await this.transport('/bot'+this.binding.token+'/sendMessage',body);
+          if(reply.status===429) {
+            // Malformed or missing retry_after fails closed until manual revocation.
+            pauseUntil=Number.MAX_SAFE_INTEGER;
+            if(typeof reply.body==='string' && Buffer.byteLength(reply.body)<=MAX_BODY) {
+              const retry=JSON.parse(reply.body)?.parameters?.retry_after;
+              const observed=now();
+              if(Number.isSafeInteger(retry) && retry>0 && Number.isSafeInteger(observed) && observed>=0 &&
+                 Number.isSafeInteger(observed+retry*1000)) pauseUntil=observed+retry*1000;
+            }
+          }
           if(reply.status===200 && typeof reply.body==='string' && Buffer.byteLength(reply.body)<=MAX_BODY) {
             const parsed=JSON.parse(reply.body);
             if(parsed?.ok===true && Number.isSafeInteger(parsed.result?.message_id) &&
@@ -121,7 +135,7 @@ export class NotificationTelegram {
         } catch { /* redact all provider/transport errors */ }
         // Includes 429: stop the channel persistently rather than retry before
         // Retry-After. Ambiguous outcomes are never replayed by the delivery worker.
-        this.pause();
+        this.pause(pauseUntil);
         return 'uncertain';
       },now);
     } finally { this.busy=false; }
