@@ -6,6 +6,7 @@ import {NotificationDigest} from './notificationDigest.ts';
 import {NotificationDelivery} from './notificationDelivery.ts';
 import {NotificationEmail} from './notificationEmail.ts';
 import {NotificationTelegram} from './notificationTelegram.ts';
+import {NotificationPush} from './notificationPush.ts';
 
 const tables=['notification_events','notification_preferences','notification_outbox',
   'notification_digest_schedule','notification_digest_seen','notification_digest_inbox',
@@ -91,6 +92,14 @@ export class NotificationLocalRuntime{
     transport:NonNullable<ConstructorParameters<typeof NotificationTelegram>[2]>,now=Date.now){
     if(binding.owner!==this.owner||typeof transport!=='function')throw Error('Invalid local delivery scope');
     return new NotificationTelegram(this.db,binding,transport).runOnce(now,this.project);
+  }
+  async deliverPush(binding:ConstructorParameters<typeof NotificationPush>[1],transport:ConstructorParameters<typeof NotificationPush>[2],now=Date.now){
+    if(binding.owner!==this.owner||typeof transport!=='function')throw Error('Invalid local delivery scope');
+    return new NotificationPush(this.db,binding,transport).runOnce(this.project,now);
+  }
+  async pollPushReceipt(binding:ConstructorParameters<typeof NotificationPush>[1],transport:ConstructorParameters<typeof NotificationPush>[2],now=Date.now){
+    if(binding.owner!==this.owner||typeof transport!=='function')throw Error('Invalid local delivery scope');
+    return new NotificationPush(this.db,binding,transport).pollReceipt(this.project,now);
   }
   snapshot(unread=false,limit=50){
     this.db.exec('BEGIN');

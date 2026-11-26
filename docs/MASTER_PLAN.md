@@ -296,3 +296,7 @@ Run [45843594342](https://github.com/gianpaolobol/Forgia/actions/runs/4584359434
 
 ## 26 novembre 2026 — F14 N9 worker locale scoped
 #59 c4de11d4, run 45879597929 success su Android/iOS/web; #52 e4af5712 run 45824683058 success, review indipendenti assenti. Main f8e64a98, backup iteration-30 3550c197 verificati. N9 compone adapter email/Telegram nel runtime con trasporto esplicito, owner vincolato e filtro progetto atomico prima del claim; conserva pacing/cap owner-wide e comportamento legacy. Tre test predisposti, esiti pendenti. Nessun invio reale, attivazione, credenziale, esposizione, costo o merge. Vault/pairing, push, fisici, provider cloud e RV-01 aperti. Vedi docs/NOTIFICATION_SCOPED_WORKER.md.
+
+
+## 26 novembre 2026 — F14 N10 Expo Push (candidato isolato)
+#60 522f6db4 CI [45887266810](https://github.com/gianpaolobol/Forgia/actions/runs/45887266810) tutti tre job success, N9a–c PASS da log Android; #52 e4af5712 separata, review #52/#60 assenti, backup iteration-30 3550c197 verificato. N10 adapter Expo server-side esplicito, binding opt-in, cap persistente, ticket e receipt distinti, stop in caso di ambiguità/device non registrato, integrazione runtime scoped. Quattro test predisposti, esiti pendenti. Nessuna attivazione reale, credenziale, costo, esposizione, modifica workflow o merge. Gate pairing/vault, SDK e collaudo fisico, CI e RV-01 aperti. Vedi docs/NOTIFICATION_EXPO_PUSH.md.
