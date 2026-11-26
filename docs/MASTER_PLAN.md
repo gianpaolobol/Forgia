@@ -288,3 +288,7 @@ Run [45843594342](https://github.com/gianpaolobol/Forgia/actions/runs/4584359434
 
 ## 26 novembre 2026 — F14 N7 runtime locale integrato
 #57 2688bac0 CI [45863475464](https://github.com/gianpaolobol/Forgia/actions/runs/45863475464) success: 289/289 unit, 4 N6 PASS, Android/web/iOS success; retry #56 anche success. Main f8e64a98; #52 e4af5712 resta separata, 139 commit avanti rispetto al backup iteration-30 3550c197. Review #52/#57 vuote. N7 su ramo isolato: SQLite privato POSIX, inizializzazione esclusiva, snapshot scoped, ingresso nativo, letto/non letto, revoca e digest tick/watch; CLI senza trasporti reali o rete. Quattro test predisposti; esiti nuovi pendenti. Windows ACL, UI, push, pairing/vault, consegna reale, installazioni, RV-01 ancora aperti. Nessun costo, agente esterno, merge o modifica workflow. Runbook docs/NOTIFICATION_LOCAL_RUNTIME.md.
+
+
+## 26 novembre 2026 — F14 N8 pannello locale
+#58 af57e00b: run 45871682353, 293/293 unit, quattro N7 PASS, TypeScript/web/iOS success, Android errore Gradle Foojay dopo test; rerun del job fallito richiesto. #52 e4af5712 CI verde separata. N8: pannello HTML locale autenticato, scope fisso, filtro inbox, evidenze, letto/revoca/digest via POST con Origin e CSRF, password effimera, solo loopback, nessun trasporto/attivazione. Tre test HTTP predisposti, esiti nuovi pendenti. Runbook docs/NOTIFICATION_LOCAL_DASHBOARD.md; nessuna apertura LAN, modifica workflow, costo o merge. RV-01 e verifiche fisiche/live pendenti.
