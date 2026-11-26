@@ -1,5 +1,6 @@
 import {test, type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
+import {createServer} from 'node:http';
 import {createConnection} from 'node:net';
 import {readRemoteNodeStatus} from '../src/core/remoteStatusClient.ts';
 import {DatabaseSync} from 'node:sqlite';
@@ -118,14 +119,32 @@ test('RC11 client rejects unexpected result, refuses redirects and sends no cook
     response('{"node":"../pc","online":false,"lastSeenAt":null}'),
     response('{}',302),response('{}',401),response('x'.repeat(1025)),
   ]) {
-    const fake:typeof fetch = async (url,init) => {
-      assert.equal(url,'http://127.0.0.1:9000/v1/status');
-      assert.equal(init?.redirect,'error');
-      assert.equal(init?.credentials,'omit');
-      assert.equal(init?.cache,'no-store');
-      assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer '+token);
-      return result;
-    };
+    const seen: Array<{url:unknown;init:RequestInit|undefined}> = [];
+    const fake:typeof fetch = async (url,init) => { seen.push({url,init}); return result; };
     await assert.rejects(readRemoteNodeStatus(9000,token,fake),/unavailable/);
+    assert.equal(seen.length,1);
+    assert.equal(seen[0].url,'http://127.0.0.1:9000/v1/status');
+    assert.equal(seen[0].init?.redirect,'error');
+    assert.equal(seen[0].init?.credentials,'omit');
+    assert.equal(seen[0].init?.cache,'no-store');
+    assert.equal(new Headers(seen[0].init?.headers).get('Authorization'),'Bearer '+token);
   }
+});
+
+test('RC12 real HTTP redirect does not make a second request',async t => {
+  let calls = 0;
+  const server = createServer((req,res) => {
+    calls++;
+    res.writeHead(302,{Location:'/redirected','Connection':'close'});
+    res.end();
+  });
+  await new Promise<void>((resolve,reject) => {
+    server.once('error',reject);
+    server.listen(0,'127.0.0.1',resolve);
+  });
+  t.after(() => new Promise<void>((resolve,reject) => server.close(e => e ? reject(e) : resolve())));
+  const addr = server.address();
+  assert.ok(addr && typeof addr !== 'string');
+  await assert.rejects(readRemoteNodeStatus(addr.port,'a'.repeat(64)),/unavailable/);
+  assert.equal(calls,1);
 });
