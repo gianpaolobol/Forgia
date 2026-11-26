@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {pilotGrant,pilotGrantActive,pilotIdentity} from '../server/pilot.ts';
+const id='11111111-1111-4111-8111-111111111111', token='a'.repeat(64), replacement='b'.repeat(64);
+const now=Date.parse('2026-11-25T12:00:00Z');
+const account=(value:string,expiresAt='2026-11-26T12:00:00Z')=>({id,sha256:createHash('sha256').update(value).digest('hex'),expiresAt});
+test('A6: grant binds exact identity, digest and expiry',()=>{
+ const original=account(token), bearer='Bearer '+token;
+ const identity=pilotGrant(bearer,[original],now)!;
+ assert.equal(identity.session,id);assert.equal(pilotIdentity(bearer,[original],now),id);
+ assert.notEqual(identity.grant,token);assert.notEqual(identity.grant,original.sha256);
+ assert.equal(pilotGrantActive(id,identity.grant,[original],now),true);
+ assert.equal(pilotGrantActive(id,identity.grant,[],now),false);
+ assert.equal(pilotGrantActive(id,identity.grant,[account(replacement)],now),false);
+ assert.equal(pilotGrantActive(id,identity.grant,[account(token,'2026-11-27T12:00:00Z')],now),false);
+ assert.equal(pilotGrantActive(id,identity.grant,[original],Date.parse(original.expiresAt)),false);
+ assert.equal(pilotGrant(bearer,[account(replacement)],now),undefined);
+ assert.throws(()=>pilotGrantActive(id,identity.grant,[original,original],now));
+});
