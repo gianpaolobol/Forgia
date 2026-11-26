@@ -272,3 +272,7 @@ Autocontrollo 26 novembre 2026 su checkpoint 30afe736b4630c450813e3e1f3da317f063
 
 ## Addendum F14 N4 — digest inbox programmabile (26 novembre 2026)
 Base #54 c06ac8c0, checkpoint codice 699db2d1. Opt-in per owner/progetto, aggregazione giornaliera UTC, dedup atomico con membership, recupero dopo riavvio, revoca anche con rollback orologio, batch max 500, nessun invio o modifica inbox/outbox ordinaria. 9/9 test isolati (5 N4, 4 N1/N2 hub), SQLite reale Node22, quattro blob hash-identici, tsc strict isolato PASS. Vedere docs/NOTIFICATION_DIGEST.md. Non è scheduler in esecuzione o canale esterno; UI, binding destinatario, adapter free-first, CI cumulativa e RV-01 restano aperti. Riconciliare appendice senza sovrascrivere F09. Separatamente #52 e4af5712, run [45824683058](https://github.com/gianpaolobol/Forgia/actions/runs/45824683058): tre job success, 288/288 unit, RC16–21 PASS, 3 smoke HTTP sintetici e 4 Playwright PASS. Nessuna prova installazione fisica/provider reale attribuita alla CI.
+
+
+## Addendum F14 N5 — adapter Telegram (26 novembre 2026)
+Base #55 a93d44f1, #52 e4af5712 con CI run 45824683058 success verificato, main f8e64a98, backup iteration-30 presente. N5 implementazione isolata: pin locale owner/chat/token, opt-in esplicito e revoca backlog, HTTPS fisso gratuito senza paid broadcast, sospensione persistente con Retry-After, quattro regressioni predisposte. Nessuna consegna reale o pairing/vault, nessuna review RV-01. Matrice e rollback: docs/NOTIFICATION_TELEGRAM.md. CI coordinata obbligatoria; email/push/UI e F09 restano aperti.
