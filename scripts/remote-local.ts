@@ -20,13 +20,22 @@ async function readCredential() {
   if (process.stdin.isTTY) throw Error('Credential pipe required');
   const chunks: Buffer[] = [];
   let size = 0;
-  for await (const chunk of process.stdin) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > 66) throw Error('Invalid credential');
-    chunks.push(bytes);
+  const abort = () => process.stdin.destroy(Error('Credential input interrupted'));
+  const timer = setTimeout(abort,10_000);
+  stop.signal.addEventListener('abort',abort,{once:true});
+  try {
+    if (stop.signal.aborted) throw Error('Credential input interrupted');
+    for await (const chunk of process.stdin) {
+      const bytes = Buffer.from(chunk);
+      size += bytes.length;
+      if (size > 66) throw Error('Invalid credential');
+      chunks.push(bytes);
+    }
+  } finally {
+    clearTimeout(timer);
+    stop.signal.removeEventListener('abort',abort);
   }
-  const token = Buffer.concat(chunks).toString('ascii').replace(/\r?\n$/,'');
+  const token = Buffer.concat(chunks).toString('utf8').replace(/\r?\n$/,'');
   if (!/^[a-f0-9]{64}$/.test(token)) throw Error('Invalid credential');
   return token;
 }
@@ -65,6 +74,7 @@ async function main(args: string[]) {
   if (!((cmd === 'register' && args.length === 3) ||
         (cmd === 'revoke' && args.length === 3) ||
         (cmd === 'issue' && args.length === 5))) throw Error('Invalid command');
+  if (!a) throw Error('Missing administrator argument');
   const db = openRemoteLocalDb(dir,'control');
   try {
     const store = new RemoteNodeStatus(db);
