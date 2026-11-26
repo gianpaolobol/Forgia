@@ -247,3 +247,14 @@ Mandato del titolare: issue #46, lotto isolato da #47 88762f57, senza sostituire
 | N5 | UI inbox responsive, stato canali, filtri, digest/quiet hours, test iPhone/Android e desktop | aperto |
 | N6 | Evento sintetico e reale autorizzato end-to-end fino a canale gratuito, CI, documentazione configurazione/costi e rollback, review RV-01 | aperto |
 N1/N2 sono libreria non collegata al gateway, nessuna API remota, nessun invio. Owner è un argomento fidato, non autenticazione. Non trattare gli identificatori come dati anonimi; adapter dovrà derivarli da fonti autorizzate e non inviarli senza consenso. Vietati WhatsApp Web e scraping; valutare ntfy e WhatsApp ufficiale solo separatamente, senza nuove spese. Non riattivare record revocati. Rollback del lotto: non integrare il branch; nessuna migrazione sul DB operativo o configurazione esterna eseguita. Node22 test isolati 4/4 PASS e typecheck isolato PASS; Node24/CI e tutti i gate di prodotto ancora aperti.
+
+## Addendum v0.32 — F14 N2 delivery worker (26 novembre 2026)
+Base #48 93ef3886; issue #46, RV-01 pendente. F09/F13 restano P0. Coda aggiuntiva SQLite collegata all'outbox N1/N2, senza riscrittura distruttiva.
+| ID | Criterio | Autocontrollo |
+|---|---|---|
+| N2a | claim esclusivo tra due connessioni, fence e lease, stato sent senza replay | PASS |
+| N2b | intent persistito prima di chiamata, riapertura DB e scadenza => uncertain, nessun replay | PASS |
+| N2c | revoca tra claim e intent, anche dopo ri-opt-in | PASS |
+| N2d | retry soltanto con prova di mancata consegna, 3 tentativi totali, backoff 30/60 s, dead-letter | PASS |
+| N2e | eccezione trasporto => uncertain, isolamento owner | PASS |
+N1/N2 regressione 4/4 PASS; totale 9/9, Node22 Linux, SQLite reale, adapter sintetico. Typecheck isolato PASS. Il worker non è un servizio schedulato, non autentica l'owner, non conferma la gratuità del canale né l'identità del destinatario. Non può fermare una consegna già avviata; l'esito incerto non va reinviato automaticamente. Status di consegna distinto da outbox di consenso: usare NotificationDelivery.status, non interpretare pending nell'outbox come mancata consegna. runOnce indica transizione registrata, non successo della consegna. La scadenza di sending è riconciliata alla prossima claim o finish. Quiet hours, digest, cap/rate limit globale, audit append-only, riconciliazione manuale, concorrenza multiprocesso, adapter autorizzati, UI, Node24/CI e prove live restano aperti. Non eliminare la tabella delivery su DB utilizzato: perderebbe gli stati terminali e consentirebbe replay; rollback solo mantenendo dati e disattivando il worker. Nessuna modifica al DB operativo o gateway; non integrare prima di CI e review.
