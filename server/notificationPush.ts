@@ -65,10 +65,17 @@ export class NotificationPush{
  revoke(){
   atomic(this.db,()=>{if(!this.row())throw Error('Push binding mismatch');this.db.prepare("UPDATE notification_push_binding SET state='revoked',ticket=NULL,project=NULL WHERE singleton=1").run();this.clearConsent();});
  }
- private reserve(project:string,now:number){
+ private reserve(project:string,source:string,id:string,now:number){
   clock(now);const day=Math.floor(now/DAY);
   return atomic(this.db,()=>{
    const r=this.row();if(!r||r.state!=='active'||day<Number(r.utc_day)||(day===Number(r.utc_day)&&Number(r.attempts)>=20))return false;
+   // Recheck the exact event and consent in the same transaction as provider intent.
+   // A revoke/re-opt-in between delivery.begin and this reservation cannot revive backlog.
+   const consent=this.db.prepare(`SELECT 1 FROM notification_outbox o JOIN notification_preferences p
+     ON p.owner=o.owner AND p.project=o.project AND p.channel=o.channel
+     WHERE o.owner=? AND o.project=? AND o.source=? AND o.id=? AND o.channel='push' AND o.state='pending' AND p.enabled=1`)
+     .get(this.binding.owner,project,source,id);
+   if(!consent)return false;
    return this.db.prepare("UPDATE notification_push_binding SET state='blocked',project=?,ticket=NULL,created=?,next_poll=0,attempts=CASE WHEN utc_day=? THEN attempts+1 ELSE 1 END,utc_day=?,last_receipt='unknown' WHERE singleton=1 AND digest=? AND state='active'").run(project,now,day,day,this.digest).changes===1;
   });
  }
@@ -79,7 +86,7 @@ export class NotificationPush{
   projectScope(project);const r=this.row(),day=Math.floor(clock(now())/DAY);
   if(!r||r.state!=='active'||day<Number(r.utc_day)||(day===Number(r.utc_day)&&Number(r.attempts)>=20))return false;
   return this.delivery.runOnce(this.binding.owner,'push',async d=>{
-   if(!this.reserve(d.project,now()))return 'not-sent';
+   if(!this.reserve(d.project,d.event.source,d.event.id,now()))return 'not-sent';
    try{
     const payload=JSON.stringify({to:this.binding.pushToken,title:'Forgia',body:d.event.summary+'. Dettagli nella inbox.',ttl:3600});
     const raw=parsed(await this.transport('send',this.binding.accessToken,payload));
