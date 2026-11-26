@@ -87,3 +87,17 @@ test('N4 bounded batch and pending overflow; future receipt excluded and later c
     assert.equal(d.tick('alice',project,2*DAY+HOUR),null);
   } finally {db.close();}
 });
+test('N4 atomic failure rolls back slot and event membership; retry preserves all counts',()=>{
+  const db=new DatabaseSync(':memory:');
+  try {
+    const h=new NotificationHub(db), d=new NotificationDigest(db);
+    d.setSchedule('alice',project,60,1);
+    h.publish('alice',event('a'),2);
+    db.exec("CREATE TRIGGER fail_digest BEFORE INSERT ON notification_digest_inbox BEGIN SELECT RAISE(ABORT,'fixture failure'); END");
+    assert.throws(()=>d.tick('alice',project,HOUR),/fixture failure/);
+    assert.deepEqual(d.inbox('alice',project),[]);
+    db.exec('DROP TRIGGER fail_digest');
+    assert.equal(d.tick('alice',project,HOUR)?.total,1);
+    assert.equal(d.tick('alice',project,HOUR),null);
+  } finally {db.close();}
+});
