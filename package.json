@@ -8,11 +8,13 @@
     "start": "expo start",
     "web": "expo start --web --port 8081",
     "check": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "test": "npm run test:unit && npm run test:integration",
     "api": "node --experimental-strip-types server/main.ts",
     "export:web": "expo export --platform web",
     "test:ui": "playwright test",
-    "portfolio": "node --experimental-strip-types scripts/master-portfolio.ts"
+    "portfolio": "node --experimental-strip-types scripts/master-portfolio.ts",
+    "test:unit": "node --experimental-strip-types --test tests/*.test.ts",
+    "test:integration": "node scripts/test-superhandy-loopback.mjs && node scripts/test-superhandy-grant-loopback.mjs && node scripts/test-durable-loopback.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
