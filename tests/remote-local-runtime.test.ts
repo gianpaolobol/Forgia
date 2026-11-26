@@ -1,4 +1,6 @@
 import {test} from 'node:test';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import {chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync, symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -71,4 +73,21 @@ test('RC18 private POSIX state refuses permissive directory and redirected datab
     symlinkSync(outside,path+'-journal');
     assert.throws(() => openRemoteLocalDb(dir,'control'));
   } finally { chmodSync(dir,0o700); rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('RC19 CLI refuses noninteractive administration and invalid credential pipe without echo', () => {
+  const dir = temp();
+  const script = fileURLToPath(new URL('../scripts/remote-local.ts',import.meta.url));
+  const invalid = 'synthetic-invalid-credential';
+  const run = (args: string[], input = '') => spawnSync(process.execPath,
+    ['--experimental-strip-types',script,...args],{input,encoding:'utf8',timeout:10_000});
+  try {
+    const admin = run(['register',dir,'pc']);
+    assert.equal(admin.status,1);
+    assert.equal(admin.stdout,'');
+    const agent = run(['agent',dir,'8791'],invalid);
+    assert.equal(agent.status,1);
+    assert.equal(agent.stdout,'');
+    assert.ok(!agent.stderr.includes(invalid));
+  } finally { rmSync(dir,{recursive:true,force:true}); }
 });
