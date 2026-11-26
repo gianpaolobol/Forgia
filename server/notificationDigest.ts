@@ -41,9 +41,11 @@ export class NotificationDigest {
     if (minute !== null && (!Number.isInteger(minute) || minute < 0 || minute >= 1440)) throw new Error('Invalid UTC minute');
     this.atomic(() => {
       const old = this.db.prepare('SELECT minute,next_at,observed FROM notification_digest_schedule WHERE owner=? AND project=?').get(owner,project);
-      if (old && Number(old.observed) > now) throw new Error('Digest clock rollback');
+      if (old && Number(old.observed) > now && minute !== null) throw new Error('Digest clock rollback');
+      // Opt-out must remain possible even when the wall clock has moved backwards.
+      const observed = Math.max(now,old ? Number(old.observed) : 0);
       if (old && old.minute === minute) {
-        this.db.prepare('UPDATE notification_digest_schedule SET observed=? WHERE owner=? AND project=?').run(now,owner,project);
+        this.db.prepare('UPDATE notification_digest_schedule SET observed=? WHERE owner=? AND project=?').run(observed,owner,project);
         return;
       }
       if (minute !== null && (!old || old.minute === null)) {
@@ -52,7 +54,7 @@ export class NotificationDigest {
       }
       this.db.prepare(`INSERT INTO notification_digest_schedule VALUES (?,?,?,?,?)
         ON CONFLICT(owner,project) DO UPDATE SET minute=excluded.minute,next_at=excluded.next_at,observed=excluded.observed`)
-        .run(owner,project,minute,minute === null ? null : nextSlot(now,minute),now);
+        .run(owner,project,minute,minute === null ? null : nextSlot(now,minute),observed);
     });
   }
   // At most one durable batch per due slot. Missed slots coalesce; overflow waits for the next slot.
