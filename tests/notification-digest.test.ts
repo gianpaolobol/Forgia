@@ -59,7 +59,9 @@ test('N4 revocation, re-enable baseline and input validation; no digest for disa
     const h=new NotificationHub(db), d=new NotificationDigest(db);
     d.setSchedule('alice',project,60,1);
     h.publish('alice',event('before'),2);
-    d.setSchedule('alice',project,null,3);
+    assert.equal(d.tick('alice',project,10),null);
+    d.setSchedule('alice',project,null,3); // revocation must work despite clock rollback
+    assert.throws(()=>d.setSchedule('alice',project,60,4));
     h.publish('alice',event('disabled'),4);
     assert.equal(d.tick('alice',project,HOUR),null);
     d.setSchedule('alice',project,120,HOUR);
