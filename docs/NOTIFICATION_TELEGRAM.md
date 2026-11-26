@@ -23,3 +23,7 @@ Fonti ufficiali consultate 26/11/2026: https://core.telegram.org/bots/api e http
 Rollback: fermare worker, revocare binding, preservare DB/sidecar privati, non riattivare righe uncertain; disabilitare il canale prima di tornare alla versione precedente. Nessuna migrazione distruttiva. Non cancellare audit per aggirare revoca. Rotazione credenziale richiede un nuovo percorso di pairing esplicitamente revisionato.
 
 Esecuzione locale integrale non disponibile per DNS GitHub; non attribuire PASS ai test senza evidenza. Nessuna review indipendente simulata.
+
+
+## 26 novembre 2026 — correzione CI e intento Telegram persistente
+Run [45843594342](https://github.com/gianpaolobol/Forgia/actions/runs/45843594342): web e iOS success; Android TS2345 nel double Ledger del test portfolio-superhandy, prima dei test. Ripreso il fix identico a #52 (inspect:fail), senza modificare il bridge. N5 riserva lo stato paused con sentinel SQLite prima del trasporto; crash senza esito o Retry-After invalido bloccano la ripresa fino a revoca. Un esito valido riapre il canale solo se non revocato; esito ambiguo resta sospeso per ripresa locale esplicita. Aggiunte regressioni su interruzione simulata/riapertura e revoca in-flight. Nessuna migrazione distruttiva, consegna reale, costo, review o nuovo workflow. Test nuovi e CI da verificare; non dichiarare PASS anticipato. Main e #52 invariati.

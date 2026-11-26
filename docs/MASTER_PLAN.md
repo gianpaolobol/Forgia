@@ -276,3 +276,7 @@ Base #54 c06ac8c0, checkpoint codice 699db2d1. Opt-in per owner/progetto, aggreg
 
 ## Addendum F14 N5 — adapter Telegram (26 novembre 2026)
 Base #55 a93d44f1, #52 e4af5712 con CI run 45824683058 success verificato, main f8e64a98, backup iteration-30 presente. N5 implementazione isolata: pin locale owner/chat/token, opt-in esplicito e revoca backlog, HTTPS fisso gratuito senza paid broadcast, sospensione persistente con Retry-After, quattro regressioni predisposte. Nessuna consegna reale o pairing/vault, nessuna review RV-01. Matrice e rollback: docs/NOTIFICATION_TELEGRAM.md. CI coordinata obbligatoria; email/push/UI e F09 restano aperti.
+
+
+## 26 novembre 2026 — correzione CI e intento Telegram persistente
+Run [45843594342](https://github.com/gianpaolobol/Forgia/actions/runs/45843594342): web e iOS success; Android TS2345 nel double Ledger del test portfolio-superhandy, prima dei test. Ripreso il fix identico a #52 (inspect:fail), senza modificare il bridge. N5 riserva lo stato paused con sentinel SQLite prima del trasporto; crash senza esito o Retry-After invalido bloccano la ripresa fino a revoca. Un esito valido riapre il canale solo se non revocato; esito ambiguo resta sospeso per ripresa locale esplicita. Aggiunte regressioni su interruzione simulata/riapertura e revoca in-flight. Nessuna migrazione distruttiva, consegna reale, costo, review o nuovo workflow. Test nuovi e CI da verificare; non dichiarare PASS anticipato. Main e #52 invariati.

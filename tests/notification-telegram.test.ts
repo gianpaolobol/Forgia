@@ -86,3 +86,37 @@ test('N5 concurrent workers do not dispatch a second request while first is in f
     assert.equal(await b.runOnce(()=>40_000),true);assert.equal(calls,2);
   }finally{db.close();}
 });
+
+test('N5 send intent survives interruption and blocks resume or another send after lease expiry',async()=>{
+  const dir=mkdtempSync(join(tmpdir(),'forgia-telegram-crash-'));
+  const path=join(dir,'hub.sqlite');
+  let db=new DatabaseSync(path);
+  try{
+    const hub=new NotificationHub(db);
+    let calls=0;
+    const worker=new NotificationTelegram(db,config,async()=>{calls++;return new Promise<never>(()=>{});});
+    worker.activate();hub.setPreference('alice',project,'telegram',true);
+    hub.publish('alice',event('one'),10);hub.publish('alice',event('two'),20);
+    // Simulate loss of the process after the transport was invoked, without an outcome.
+    void worker.runOnce(()=>100);
+    assert.equal(calls,1);assert.equal(worker.state(),'paused');
+    db.close();db=new DatabaseSync(path);
+    const reopened=new NotificationTelegram(db,config,async()=>{calls++;return success;});
+    assert.equal(reopened.state(),'paused');
+    assert.throws(()=>reopened.resume(Number.MAX_SAFE_INTEGER));
+    assert.equal(await reopened.runOnce(()=>200_000),false);
+    assert.equal(calls,1);reopened.revoke();assert.equal(reopened.state(),'revoked');
+  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
+});
+test('N5 revocation during transport cannot be reversed by a success response',async()=>{
+  const db=new DatabaseSync(':memory:');
+  try{
+    const hub=new NotificationHub(db);
+    let release!:()=>void;const wait=new Promise<void>(resolve=>{release=resolve;});
+    const a=new NotificationTelegram(db,config,async()=>{await wait;return success;});
+    a.activate();hub.setPreference('alice',project,'telegram',true);hub.publish('alice',event('one'),10);
+    const sending=a.runOnce(()=>100);assert.equal(a.state(),'paused');
+    a.revoke();release();assert.equal(await sending,true);
+    assert.equal(a.state(),'revoked');assert.equal(await a.runOnce(()=>2000),false);
+  }finally{db.close();}
+});

@@ -8,6 +8,8 @@ type Binding = { owner: string; chatId: number; token: string; consentVerified: 
 type Reply = { status: number; body: string };
 type Transport = (path: string, body: string) => Promise<Reply>;
 const MAX_BODY = 64 * 1024;
+// Sentinel: interrupted dispatch or unknown retry window requires revocation.
+const BLOCKED = Number.MAX_SAFE_INTEGER;
 function fingerprint(b: Binding) {
   if (!b || typeof b.owner !== 'string' || !/^[a-zA-Z0-9_-]{1,96}$/.test(b.owner) ||
       !Number.isSafeInteger(b.chatId) || b.chatId <= 0 ||
@@ -86,8 +88,14 @@ export class NotificationTelegram {
       this.clearConsent();
     });
   }
-  private pause(until: number) {
-    this.db.prepare("UPDATE notification_telegram_binding SET state='paused',pause_until=? WHERE singleton=1 AND digest=? AND state='active'").run(until,this.digest);
+  // Commit an exclusive send intent before the external side effect. A crash
+  // leaves the channel blocked, even after the delivery lease expires.
+  private reserveSend() {
+    return this.db.prepare("UPDATE notification_telegram_binding SET state='paused',pause_until=? WHERE singleton=1 AND digest=? AND state='active'").run(BLOCKED,this.digest).changes===1;
+  }
+  private finishSend(sent: boolean, until: number) {
+    this.db.prepare("UPDATE notification_telegram_binding SET state=?,pause_until=? WHERE singleton=1 AND digest=? AND state='paused' AND pause_until=?")
+      .run(sent?'active':'paused',sent?0:until,this.digest,BLOCKED);
   }
   // No automatic resume after rate-limit or ambiguous delivery. Only an explicit
   // operator action after checking provider status/limits; never replay uncertain rows.
@@ -96,7 +104,7 @@ export class NotificationTelegram {
     atomic(this.db,()=>{
       if(this.state()!=='paused') throw new Error('Telegram binding not paused');
       const row=this.db.prepare('SELECT pause_until FROM notification_telegram_binding WHERE singleton=1').get();
-      if(!row || now<Number(row.pause_until)) throw new Error('Telegram retry window not elapsed');
+      if(!row || Number(row.pause_until)===BLOCKED || now<Number(row.pause_until)) throw new Error('Telegram retry window not elapsed');
       this.db.prepare("UPDATE notification_telegram_binding SET state='active',pause_until=0 WHERE singleton=1").run();
     });
   }
@@ -107,7 +115,7 @@ export class NotificationTelegram {
       return await this.delivery.runOnce(this.binding.owner,'telegram',async d=>{
         if(this.state()!=='active') return 'not-sent';
         const pending=this.db.prepare("SELECT COUNT(*) AS n FROM notification_delivery WHERE owner=? AND channel='telegram' AND state='sending'").get(this.binding.owner);
-        if(Number(pending?.n)!==1) return 'not-sent';
+        if(Number(pending?.n)!==1 || !this.reserveSend()) return 'not-sent';
         // Only the redacted fixed summary; no project, evidence link, free text,
         // account information or tokens in the message. Details stay in inbox.
         const body=JSON.stringify({chat_id:this.binding.chatId,
@@ -118,7 +126,7 @@ export class NotificationTelegram {
           const reply=await this.transport('/bot'+this.binding.token+'/sendMessage',body);
           if(reply.status===429) {
             // Malformed or missing retry_after fails closed until manual revocation.
-            pauseUntil=Number.MAX_SAFE_INTEGER;
+            pauseUntil=BLOCKED;
             if(typeof reply.body==='string' && Buffer.byteLength(reply.body)<=MAX_BODY) {
               const retry=JSON.parse(reply.body)?.parameters?.retry_after;
               const observed=now();
@@ -130,12 +138,12 @@ export class NotificationTelegram {
             const parsed=JSON.parse(reply.body);
             if(parsed?.ok===true && Number.isSafeInteger(parsed.result?.message_id) &&
                parsed.result.message_id>0 && parsed.result?.chat?.id===this.binding.chatId &&
-               parsed.result?.chat?.type==='private') return 'sent';
+               parsed.result?.chat?.type==='private') { this.finishSend(true,0); return 'sent'; }
           }
         } catch { /* redact all provider/transport errors */ }
         // Includes 429: stop the channel persistently rather than retry before
         // Retry-After. Ambiguous outcomes are never replayed by the delivery worker.
-        this.pause(pauseUntil);
+        this.finishSend(false,pauseUntil);
         return 'uncertain';
       },now);
     } finally { this.busy=false; }
