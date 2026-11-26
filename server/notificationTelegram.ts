@@ -24,7 +24,7 @@ function atomic<T>(db: DatabaseSync, fn: () => T): T {
 // An absolute deadline covers both connect and response; response size is bounded.
 function sendTelegram(path: string, body: string): Promise<Reply> {
   return new Promise((resolve,reject) => {
-    const req=request({hostname:'api.telegram.org',port:443,method:'POST',path,
+    const req=request({hostname:'api.telegram.org',port:443,method:'POST',path,rejectUnauthorized:true,agent:false,
       headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}},res=>{
       const chunks:Buffer[]=[]; let bytes=0;
       res.on('data',(chunk:Buffer)=>{
