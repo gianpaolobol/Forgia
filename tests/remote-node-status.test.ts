@@ -92,8 +92,49 @@ test('RC4 invalid scope/sequence and clock rollback fail closed',()=>{
     now=2000;api.heartbeat(node.token,1);
     now=1500;
     assert.throws(()=>api.heartbeat(node.token,2));
-    assert.equal(api.status(op.token).online,false);
+    assert.throws(()=>api.status(op.token));
     now=999;
     assert.throws(()=>api.status(op.token));
+  } finally {db.close();}
+});
+
+test('RC5 expired grant cannot regain authority after observed clock rollback or restart',()=>{
+  const dir=mkdtempSync(join(tmpdir(),'forgia-clock-'));
+  const path=join(dir,'status.db');
+  let now=1000;
+  let db=new DatabaseSync(path);
+  try {
+    let api=new RemoteNodeStatus(db,()=>now);api.register('pc');
+    const op=api.issue('pc','operator',1000), node=api.issue('pc','node',1000);
+    api.heartbeat(node.token,1);
+    now=2000;
+    assert.throws(()=>api.status(op.token)); // denial must persist watermark
+    db.close();db=new DatabaseSync(path);api=new RemoteNodeStatus(db,()=>now);
+    now=1500;
+    assert.throws(()=>api.status(op.token));
+    assert.throws(()=>api.heartbeat(node.token,2));
+    assert.throws(()=>api.issue('pc','node',1000));
+    assert.equal(api.revoke(node.id),true); // emergency revocation still possible
+    now=2001;
+    assert.throws(()=>api.status(op.token));
+    assert.throws(()=>api.heartbeat(node.token,2));
+    const fresh=api.issue('pc','operator',1000);
+    assert.equal(api.status(fresh.token).online,false);
+  } finally {db.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('RC6 migration seeds watermark from historical grants and last seen',()=>{
+  const db=new DatabaseSync(':memory:');
+  let now=1000;
+  try {
+    const api=new RemoteNodeStatus(db,()=>now);api.register('pc');
+    const op=api.issue('pc','operator',100_000),node=api.issue('pc','node',100_000);
+    now=5000;api.heartbeat(node.token,1);
+    db.exec('DROP TABLE rc_clock'); // simulate previous schema, not a supported rollback
+    now=4000;
+    const migrated=new RemoteNodeStatus(db,()=>now);
+    assert.throws(()=>migrated.status(op.token));
+    now=5000;
+    assert.equal(migrated.status(op.token).online,true);
   } finally {db.close();}
 });

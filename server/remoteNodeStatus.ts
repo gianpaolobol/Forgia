@@ -12,7 +12,11 @@ const maxTtl = 24 * 60 * 60 * 1000;
 const heartbeatWindow = 90_000;
 
 export class RemoteNodeStatus {
-  constructor(private readonly db: DatabaseSync, private readonly clock = Date.now) {
+  private readonly db: DatabaseSync;
+  private readonly clock: () => number;
+  constructor(db: DatabaseSync, clock = Date.now) {
+    this.db = db;
+    this.clock = clock;
     db.exec(`
       CREATE TABLE IF NOT EXISTS rc_nodes (
         id TEXT PRIMARY KEY, seen INTEGER
@@ -24,6 +28,14 @@ export class RemoteNodeStatus {
         revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1)),
         seq INTEGER NOT NULL DEFAULT 0
       );
+      CREATE TABLE IF NOT EXISTS rc_clock (
+        singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+        watermark INTEGER NOT NULL CHECK(watermark>=0)
+      );
+      INSERT INTO rc_clock(singleton,watermark)
+        SELECT 1, MAX(COALESCE((SELECT MAX(created) FROM rc_grants),0),
+                      COALESCE((SELECT MAX(seen) FROM rc_nodes),0))
+        WHERE NOT EXISTS (SELECT 1 FROM rc_clock WHERE singleton=1);
       CREATE INDEX IF NOT EXISTS rc_grants_scope ON rc_grants(node,role,revoked,expires);
     `);
   }
@@ -46,6 +58,33 @@ export class RemoteNodeStatus {
     }
   }
 
+  // Observe time durably even when a request is denied (e.g. an expired token).
+  // Roll back the operation, not the watermark. Revocation remains possible
+  // under clock rollback because it can only remove authority.
+  private timed<T>(fn: (now: number) => T): T {
+    const result = this.tx(() => {
+      const now = this.now();
+      const row = this.db.prepare('SELECT watermark FROM rc_clock WHERE singleton=1').get();
+      if (!row || typeof row.watermark !== 'number' ||
+          !Number.isSafeInteger(row.watermark) || row.watermark < 0 ||
+          now < row.watermark) throw denied();
+      this.db.prepare('UPDATE rc_clock SET watermark=? WHERE singleton=1').run(now);
+      this.db.exec('SAVEPOINT rc_operation');
+      let value: T;
+      try {
+        value = fn(now);
+      } catch (error) {
+        this.db.exec('ROLLBACK TO rc_operation');
+        this.db.exec('RELEASE rc_operation');
+        return {ok:false as const,error};
+      }
+      this.db.exec('RELEASE rc_operation');
+      return {ok:true as const,value};
+    });
+    if (!result.ok) throw result.error;
+    return result.value;
+  }
+
   // Trusted local administrator only; never expose this method through a remote route.
   register(node: string) {
     if (typeof node !== 'string' || !identifier.test(node)) throw denied();
@@ -57,8 +96,7 @@ export class RemoteNodeStatus {
     if (typeof node !== 'string' || !identifier.test(node) ||
         (role !== 'node' && role !== 'operator') ||
         !Number.isSafeInteger(ttlMs) || ttlMs <= 0 || ttlMs > maxTtl) throw denied();
-    return this.tx(() => {
-      const now = this.now();
+    return this.timed(now => {
       if (!this.db.prepare('SELECT id FROM rc_nodes WHERE id=?').get(node)) throw denied();
       const id = randomUUID(), token = randomBytes(32).toString('hex');
       if (role === 'node') {
@@ -93,8 +131,7 @@ export class RemoteNodeStatus {
 
   heartbeat(token: string, sequence: number) {
     if (!Number.isSafeInteger(sequence) || sequence <= 0) throw denied();
-    return this.tx(() => {
-      const now = this.now();
+    return this.timed(now => {
       const grant = this.authorize(token,'node',now);
       const node = this.db.prepare('SELECT seen FROM rc_nodes WHERE id=?').get(grant.node);
       if (!node || sequence <= grant.seq || (typeof node.seen === 'number' && now < node.seen)) throw denied();
@@ -105,8 +142,7 @@ export class RemoteNodeStatus {
   }
 
   status(token: string): {node: string; online: boolean; lastSeenAt: number | null} {
-    return this.tx(() => {
-      const now = this.now();
+    return this.timed(now => {
       const grant = this.authorize(token,'operator',now);
       const row = this.db.prepare('SELECT seen FROM rc_nodes WHERE id=?').get(grant.node);
       if (!row) throw denied();
