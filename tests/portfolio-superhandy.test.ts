@@ -69,6 +69,6 @@ test('I3 SQLite review gate, DAG dependencies, restart, evidence and reviewer co
 test('I4 portfolio tasks cannot be run or resumed by AppSpec bridge; no transport or claim', async () => {
   const fail=()=>{throw Error('unexpected side effect');};
   const options={actor:'one',taskId:'portfolio-inventory',artifactDir:'/nonexistent',verifySpec:fail,transport:fail};
-  await assert.rejects(runLocalSpec({claim:fail,dispatch:fail,recordReceipt:fail,submit:fail},{...options,provider:'local'}),/riconciliazione/);
+  await assert.rejects(runLocalSpec({claim:fail,dispatch:fail,recordReceipt:fail,submit:fail,inspect:fail},{...options,provider:'local'}),/riconciliazione/);
   await assert.rejects(resumeLocalSpec({inspect:fail,reconcile:fail},options),/riconciliazione/);
 });
