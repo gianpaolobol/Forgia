@@ -1,6 +1,6 @@
 import {test} from 'node:test';
-import {spawnSync} from 'node:child_process';
-import {fileURLToPath} from 'node:url';
+import {spawn,spawnSync} from 'node:child_process';
+import {fileURLToPath,URL} from 'node:url';
 import assert from 'node:assert/strict';
 import {chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync, symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -90,4 +90,62 @@ test('RC19 CLI refuses noninteractive administration and invalid credential pipe
     assert.equal(agent.stdout,'');
     assert.ok(!agent.stderr.includes(invalid));
   } finally { rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('RC20 operator CLI reads live local status through private stdin, never echoes credential', {timeout:30_000}, async () => {
+  const dir = temp();
+  const script = fileURLToPath(new URL('../scripts/remote-local.ts',import.meta.url));
+  const db = openRemoteLocalDb(dir,'control');
+  const store = new RemoteNodeStatus(db);
+  store.register('pc');
+  const node = store.issue('pc','node',120_000);
+  const op = store.issue('pc','operator',120_000);
+  db.close();
+  const host = await startRemoteLocalHost(dir,0);
+  const agentDb = openRemoteLocalDb(dir,'agent');
+  try {
+    const address = host.server.address();
+    assert.ok(address && typeof address !== 'string');
+    const agent = new RemoteHeartbeatAgent(agentDb,address.port,node.token);
+    const query = (token: string, port = address.port) => new Promise<{code: number|null; stdout: string; stderr: string}>((resolve,reject) => {
+      const child = spawn(process.execPath,['--experimental-strip-types',script,'status',String(port)],
+        {stdio:['pipe','pipe','pipe'],timeout:10_000});
+      let stdout='',stderr='';
+      child.stdout.setEncoding('utf8').on('data',chunk => { stdout+=chunk; });
+      child.stderr.setEncoding('utf8').on('data',chunk => { stderr+=chunk; });
+      child.once('error',reject);
+      child.stdin.on('error',reject);
+      child.once('close',code => resolve({code,stdout,stderr}));
+      child.stdin.end(token+'\n');
+    });
+    try {
+      assert.equal(await agent.pulse(),'accepted');
+      const allowed = await query(op.token);
+      assert.equal(allowed.code,0);
+      assert.deepEqual(JSON.parse(allowed.stdout),await readRemoteNodeStatus(address.port,op.token));
+      assert.ok(!allowed.stdout.includes(op.token) && !allowed.stderr.includes(op.token));
+      // Wrong role and forbidden gateway port are failures, not offline results.
+      for (const denied of [await query(node.token),await query(op.token,8787)]) {
+        assert.equal(denied.code,1);
+        assert.equal(denied.stdout,'');
+        assert.ok(!denied.stderr.includes(node.token) && !denied.stderr.includes(op.token));
+      }
+      const admin = openRemoteLocalDb(dir,'control');
+      try { assert.equal(new RemoteNodeStatus(admin).revoke(op.id),true); } finally { admin.close(); }
+      const revoked=await query(op.token);
+      assert.equal(revoked.code,1);
+      assert.equal(revoked.stdout,'');
+      assert.ok(!revoked.stderr.includes(op.token));
+    } finally { await agent.stop(); }
+  } finally { await host.close(); agentDb.close(); rmSync(dir,{recursive:true,force:true}); }
+});
+
+test('RC21 operator CLI rejects malformed pipe without echo', () => {
+  const script = fileURLToPath(new URL('../scripts/remote-local.ts',import.meta.url));
+  const invalid='invalid-synthetic-operator-token';
+  const result=spawnSync(process.execPath,['--experimental-strip-types',script,'status','8791'],
+    {input:invalid,encoding:'utf8',timeout:10_000});
+  assert.equal(result.status,1);
+  assert.equal(result.stdout,'');
+  assert.ok(!result.stderr.includes(invalid));
 });
