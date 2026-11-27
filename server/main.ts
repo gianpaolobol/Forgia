@@ -14,6 +14,7 @@ import {createDurableLocalJobs, prepareLocalLedger} from './durableJobs.ts';
 import {existsSync} from 'node:fs';
 import {prepareCloudState} from './cloudState.ts';
 import {knownRoutingStatus} from './routingFailure.ts';
+import {prepareDurableLocalAuth} from './durableLocalAuth.ts';
 const configs = resolveModelRegistry([
  {id: 'local', prefix: 'OLLAMA', model: process.env.OLLAMA_MODEL ?? ''},
  {id: 'llamacpp', prefix: 'LLAMACPP', model: process.env.LLAMACPP_MODEL ?? ''},
@@ -27,6 +28,8 @@ const sqliteInitialize = process.env.FORGIA_SQLITE_INITIALIZE === '1';
 if (sqliteInitialize && !sqliteLocal) throw Error('Inizializzazione SQLite richiede modalità locale esplicita.');
 if (sqliteLocal && (process.env.FORGIA_PILOT_HOST || process.env.FORGIA_DISABLE_WEB_GATEWAY === '1')) throw Error('SQLite pilota consentito solo sul gateway web loopback.');
 const sqliteDirectory = resolve(dataDirectory,'sqlite-loopback');
+const sqliteAuth = process.env.FORGIA_SQLITE_LOCAL_AUTH === '1';
+if(sqliteAuth&&(!sqliteLocal||sqliteInitialize))throw Error('Autorizzazioni richiedono coda SQLite già migrata.');
 if (!sqliteLocal && existsSync(sqliteDirectory)) throw Error('Archivio SQLite presente: non avviare la vecchia coda JSON. Ripristino offline necessario.');
 const storage = diskStorage(dataDirectory);
 const sqliteCloudState = process.env.FORGIA_SQLITE_CLOUD_STATE === '1';
@@ -35,6 +38,7 @@ if (sqliteCloudInitialize && !sqliteCloudState) throw Error('Inizializzazione qu
 if (sqliteCloudState && (!sqliteLocal || sqliteInitialize)) throw Error('Quota/cache richiede coda SQLite già migrata, senza inizializzazione concorrente.');
 if (!sqliteCloudState && existsSync(resolve(sqliteDirectory,'cloud.sqlite'))) throw Error('Archivio quota/cache presente: mantenere opt-in o ripristinare offline.');
 const localLedger = sqliteLocal ? prepareLocalLedger(sqliteDirectory,await storage.getItem('jobs.v1') ?? '[]',sqliteInitialize) : undefined;
+const durableAuth = sqliteLocal ? prepareDurableLocalAuth(sqliteDirectory,sqliteAuth) : undefined;
 // Cloud providers remain disabled in SQLite local mode. This prepares the
 // persistent state without enabling any external inference or pilot access.
 const cloudState = sqliteCloudState ? prepareCloudState(sqliteDirectory,sqliteCloudInitialize,
@@ -66,6 +70,7 @@ const durableJobs = localLedger ? createDurableLocalJobs(
  localLedger,
  (input,backlog,session,signal)=>executePlan(input,backlog,session,true,signal),
  (id)=>{const config=configs.find(c=>c.id===id&&localProvider(c.id));try{return config?configuredProvider(config).model:undefined;}catch{return undefined;}},
+ durableAuth?.active,
 ) : undefined;
 const localJobs = durableJobs ?? buildJobs(storage, false);
 const allowed = new Set(['http://localhost:8081', 'http://127.0.0.1:8081']);
@@ -90,11 +95,12 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
      return {id: config.id, model: config.model, profile: config.profile, configured: false};
     }
    });
-   res.end(JSON.stringify({mode:'free-only',providers,localDevelopmentOnly:session === undefined,durableLocal:session===undefined&&sqliteLocal,durableModelPin:session===undefined&&sqliteLocal}));return;
+   res.end(JSON.stringify({mode:'free-only',providers,localDevelopmentOnly:session === undefined,durableLocal:jobs===durableJobs,durableModelPin:jobs===durableJobs,durableAuthorizationRequired:jobs===durableJobs&&sqliteAuth}));return;
   }
   if (req.method === 'GET' && req.url === '/jobs/receipt') {
-   if (session !== undefined || !durableJobs || jobs !== durableJobs) return reply(res,404,{error:'Recupero ricevuta non disponibile.'});
-   const receipt = durableJobs.findReceipt(req.headers['x-forgia-session'],req.headers['idempotency-key']);
+   if (!durableJobs || jobs !== durableJobs) return reply(res,404,{error:'Recupero ricevuta non disponibile.'});
+   if(session!==undefined&&req.headers['x-forgia-session']!==undefined&&req.headers['x-forgia-session']!==session)return reply(res,404,{error:'Ricevuta non trovata.'});
+   const receipt = await durableJobs.findReceipt(session??req.headers['x-forgia-session'],req.headers['idempotency-key'],grant);
    return reply(res,receipt ? 200 : 404,receipt ?? {error:'Ricevuta non trovata. Nessun reinvio automatico.'});
   }
   if (req.method === 'GET' && /^\/jobs\/[a-f0-9-]{36}$/.test(req.url ?? '')) {
@@ -115,7 +121,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
   }
   const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw Error('Richiesta non valida.');
-  if(Object.hasOwn(body,'expectedModel')&&(session!==undefined||!sqliteLocal))return reply(res,400,{error:'Pin modello richiede gateway SQLite loopback.'});
+  if(Object.hasOwn(body,'expectedModel')&&(jobs!==durableJobs))return reply(res,400,{error:'Pin modello richiede gateway SQLite loopback.'});
+  if(durableAuth&&jobs===durableJobs&&body.session!==undefined&&body.session!==session)return reply(res,403,{error:'Sessione non autorizzata.'});
   const requestKey = req.headers['idempotency-key'];
   if (session && (typeof requestKey !== 'string' || !/^[!-~]{1,900}:p[a-z0-9]{1,99}$/.test(requestKey))) {
    return reply(res, 400, {error: 'Identificativo della richiesta non valido.'});
@@ -161,11 +168,17 @@ if (process.env.FORGIA_DISABLE_WEB_GATEWAY !== '1') createServer((req, res) => {
  res.setHeader('Vary', 'Origin');
  if (req.method === 'OPTIONS') {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
-  res.setHeader('Access-Control-Allow-Headers', sqliteLocal ? 'Content-Type, Idempotency-Key, X-Forgia-Session' : 'Content-Type, Idempotency-Key');
+  res.setHeader('Access-Control-Allow-Headers', sqliteLocal ? 'Content-Type, Idempotency-Key, X-Forgia-Session, Authorization' : 'Content-Type, Idempotency-Key');
   res.writeHead(204).end();
   return;
  }
- void handle(req, res, localJobs);
+ if(durableAuth){
+  let identity:ReturnType<typeof durableAuth.identity>;
+  try{identity=durableAuth.identity(req.headers.authorization);}
+  catch{return reply(res,503,{error:'Accesso locale temporaneamente indisponibile.'});}
+  if(!identity)return reply(res,401,{error:'Autorizzazione locale richiesta.'});
+  void handle(req,res,localJobs,identity.session,identity.grant);
+ }else void handle(req, res, localJobs);
 }).listen(8787, '127.0.0.1', () => {
  durableJobs?.start();
  console.log('Gateway gratuito di sviluppo: http://127.0.0.1:8787.');
