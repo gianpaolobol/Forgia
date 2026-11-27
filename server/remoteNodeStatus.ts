@@ -93,6 +93,21 @@ export class RemoteNodeStatus {
 
   // Return the raw credential once; caller must transfer it privately. No log or storage of token.
   issue(node: string, role: Role, ttlMs: number) {
+    return this.issueInternal(node,role,ttlMs,grant=>grant);
+  }
+
+  // Trusted synchronous local handover only. A failed vault insert rolls back
+  // the new grant and any previous node rotation before releasing the lock.
+  // The external vault may contain an unusable orphan if the control commit
+  // fails or the process crashes; never replay automatically in that case.
+  issueToLocalVault(node: string, role: Role, ttlMs: number, deliver: (token:string)=>void) {
+    return this.issueInternal(node,role,ttlMs,grant=>{
+      deliver(grant.token);
+      return {id:grant.id,expiresAt:grant.expiresAt};
+    });
+  }
+
+  private issueInternal<T>(node: string, role: Role, ttlMs: number, handover:(grant:{id:string;token:string;expiresAt:number})=>T):T {
     if (typeof node !== 'string' || !identifier.test(node) ||
         (role !== 'node' && role !== 'operator') ||
         !Number.isSafeInteger(ttlMs) || ttlMs <= 0 || ttlMs > maxTtl) throw denied();
@@ -106,7 +121,7 @@ export class RemoteNodeStatus {
       }
       this.db.prepare('INSERT INTO rc_grants(id,node,role,digest,created,expires) VALUES (?,?,?,?,?,?)')
         .run(id,node,role,digest(token),now,now+ttlMs);
-      return {id, token, expiresAt: now+ttlMs};
+      return handover({id, token, expiresAt: now+ttlMs});
     });
   }
 
@@ -118,6 +133,18 @@ export class RemoteNodeStatus {
       this.db.prepare('UPDATE rc_grants SET revoked=1 WHERE id=?').run(id);
       if (grant.role === 'node') this.db.prepare('UPDATE rc_nodes SET seen=NULL WHERE id=?').run(grant.node as string);
       return true;
+    });
+  }
+
+  // Local admin inventory only: no raw tokens, digests, or sequence counters.
+  // Include all non-revoked grants (even expired) so emergency revocation is
+  // possible. A rolled-back clock must not prevent listing grant IDs.
+  inspectGrants(node:string) {
+    if (typeof node!=='string' || !identifier.test(node)) throw denied();
+    return this.tx(()=>{
+      if (!this.db.prepare('SELECT id FROM rc_nodes WHERE id=?').get(node)) throw denied();
+      const rows=this.db.prepare('SELECT id,role,created,expires FROM rc_grants WHERE node=? AND revoked=0 ORDER BY created,id').all(node);
+      return rows.map(row=>({id:row.id,role:row.role,createdAt:row.created,expiresAt:row.expires}));
     });
   }
 

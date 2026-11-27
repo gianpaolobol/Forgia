@@ -1,3 +1,4 @@
+import {provisionRemoteCredential} from '../server/remoteLocalProvision.ts';
 import {runRemoteLocalSupervisor} from '../server/remoteLocalSupervisor.ts';
 import {readRemoteNodeStatus} from '../src/core/remoteStatusClient.ts';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -142,7 +143,18 @@ async function main(args: string[]) {
   }
   // Admin commands are explicitly local and never exposed through HTTP.
   if (!process.stdin.isTTY || !process.stdout.isTTY) throw Error('Local interactive administrator terminal required');
+  if(cmd==='provision-os' && args.length===7 && a && (b==='node'||b==='operator') && c && args[5] && args[6]){
+    const vault=args[5],keyDirectory=args[6];
+    assertSeparateWindowsVault(dir,vault);
+    assertSeparateWindowsVault(dir,keyDirectory);
+    assertSeparateWindowsVault(vault,keyDirectory);
+    const key=readWindowsVaultKey(keyDirectory);
+    const grant=provisionRemoteCredential(dir,vault,a,b,integer(c,1,1440)*60_000,key);
+    console.log(JSON.stringify(grant));
+    return;
+  }
   if (!((cmd === 'register' && args.length === 3) ||
+        (cmd === 'inspect-grants' && args.length === 3) ||
         (cmd === 'revoke' && args.length === 3) ||
         (cmd === 'issue' && args.length === 5))) throw Error('Invalid command');
   if (!a) throw Error('Missing administrator argument');
@@ -151,6 +163,7 @@ async function main(args: string[]) {
     const store = new RemoteNodeStatus(db);
     if (cmd === 'register') { store.register(a); console.log('Node registered.'); }
     else if (cmd === 'revoke') console.log(store.revoke(a) ? 'Revoked.' : 'No active grant.');
+    else if (cmd === 'inspect-grants') console.log(JSON.stringify(store.inspectGrants(a)));
     else {
       if (b !== 'node' && b !== 'operator') throw Error('Invalid role');
       const grant = store.issue(a,b,integer(c,1,1440)*60_000);
