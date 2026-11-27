@@ -6,6 +6,7 @@ import {join} from 'node:path';
 import {openSuperhandyLedger} from '../server/superhandyLedger.ts';
 import {runLocalSpec,resumeLocalSpec,prepareSuperhandyArtifacts} from '../server/superhandyBridge.ts';
 import {localSpecAuthorization} from '../server/superhandyGrant.ts';
+import {localGatewayCredential} from '../server/superhandyGatewayCredential.ts';
 const h='a'.repeat(64),jobId='00000000-0000-4000-8000-000000000001';
 const meta={mode:'free-only',localDevelopmentOnly:true,durableLocal:true,durableModelPin:true,providers:[{id:'local',model:'qwen',configured:true}]};
 const result={status:'done',result:{spec:{name:'Demo'},routing:{provider:'local',model:'qwen'}}};
@@ -58,4 +59,33 @@ test('G6 manual trusted path remains compatible, cannot be retroactively grant-b
  assert.equal((await runLocalSpec(f.db,{...f.options,transport})).status,'deferred');f.advance();done=true;
  await assert.rejects(resumeLocalSpec(f.db,{...f.options,authorization:f.auth(),transport}));
  assert.equal((await resumeLocalSpec(f.db,{...f.options,transport})).status,'submitted');assert.equal(posts,1);
+});
+
+test('BSH13 protected bridge binds credential and original receipt without replay',async t=>{
+ const f=fixture(t),path=f.path+'.credential',session='00000000-0000-4000-8000-000000000002',bearer='b'.repeat(64);
+ const writeCredential=(value=bearer)=>writeFileSync(path,JSON.stringify({session,bearer:value}),{mode:0o600});
+ writeCredential();let posts=0,gets=0,done=false;
+ const transport:typeof fetch=async(input,init)=>{
+  assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer '+bearer);
+  const p=new URL(String(input)).pathname;
+  if(p==='/providers')return Response.json({...meta,durableAuthorizationRequired:true});
+  if(p==='/jobs'){posts++;assert.equal(JSON.parse(String(init?.body)).session,session);assert.match(new Headers(init?.headers).get('idempotency-key')??'',/:p1$/);return Response.json({id:jobId});}
+  gets++;return Response.json(done?result:{status:'queued',nextEligibleAt:Date.now()+60000});
+ };
+ const opts=()=>({...f.options,authorization:f.auth(),gatewayCredential:localGatewayCredential(path),transport});
+ assert.equal((await runLocalSpec(f.db,opts())).status,'deferred');
+ const name=readdirSync(f.options.artifactDir).find(n=>n.endsWith('.intent.json'))!;
+ const intent=readFileSync(join(f.options.artifactDir,name),'utf8');
+ assert.ok(!intent.includes(bearer));assert.match(JSON.parse(intent).gatewayCredentialDigest,/^[a-f0-9]{64}$/);
+ f.advance();done=true;const before=gets;
+ await assert.rejects(resumeLocalSpec(f.db,{...opts(),gatewayCredential:undefined}));
+ writeCredential('c'.repeat(64));await assert.rejects(resumeLocalSpec(f.db,opts()),/Credenziale/);assert.equal(gets,before);
+ writeCredential();assert.equal((await resumeLocalSpec(f.db,opts())).status,'submitted');assert.equal(posts,1);
+});
+test('BSH14 credential cannot fall back to trusted gateway',async t=>{
+ const f=fixture(t),path=f.path+'.credential';
+ writeFileSync(path,JSON.stringify({session:jobId,bearer:'b'.repeat(64)}),{mode:0o600});
+ const transport:typeof fetch=async input=>{assert.ok(String(input).endsWith('/providers'));return Response.json(meta);};
+ await assert.rejects(runLocalSpec(f.db,{...f.options,authorization:f.auth(),gatewayCredential:localGatewayCredential(path),transport}),/Modalità/);
+ assert.equal(f.db.inspect().tasks[0].status,'queued');
 });

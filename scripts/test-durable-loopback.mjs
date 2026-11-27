@@ -164,13 +164,28 @@ try{
  await stop();await start(guarded);
  assert.deepEqual(await (await authRequest('/jobs/'+securedId,token)).json(),securedResult);
  assert.deepEqual(await (await authLookup()).json(),{id:securedId});
+ // Protected bridge: real CLI, HTTP and SQLite; synthetic local provider.
+ const credentialPath=join(authDir,'bridge-credential.json');
+ await writeFile(credentialPath,JSON.stringify({session,bearer:token}),{mode:0o600});
+ const protectedCli=async(...args)=>JSON.parse((await promisify(execFile)(process.execPath,['--experimental-strip-types','scripts/superhandy.ts',...args],{cwd:root,env:{...env,...authEnv,FORGIA_SUPERHANDY_GATEWAY_CREDENTIAL_FILE:credentialPath},timeout:15000})).stdout);
+ const protectedBaseline=await protectedCli('init','guarded',planPath);
+ await protectedCli('approve','guarded','reviewer',protectedBaseline,reviewHash);
+ const protectedGrant=join(authDir,'bridge-grant.json');
+ await writeFile(protectedGrant,JSON.stringify({version:1,baselineSha:protectedBaseline,actor:'one',taskId:'spec',provider:'local',model:'fixture-local',expiresAt:Date.now()+600000}),{mode:0o600});
+ const protectedResult=await protectedCli('run-granted-local-spec','guarded','one','spec','local',protectedGrant);
+ assert.equal(protectedResult.status,'submitted');
+ assert.equal(calls,beforeAuth+2);
+ const protectedArtifacts=join(authDir,'superhandy','guarded-artifacts');
+ for(const name of await readdir(protectedArtifacts)){const raw=await readFile(join(protectedArtifacts,name),'utf8');assert.ok(!raw.includes(token));}
+ assert.equal((await authRequest('/jobs/'+protectedResult.jobId,foreign)).status,404);
+ await protectedCli('review','guarded','reviewer','spec',protectedResult.evidence,'accept',reviewHash);
  await writeFile(accountPath,JSON.stringify([account(session,foreign)]));
  assert.equal((await authRequest('/jobs/'+securedId,token)).status,401);
  assert.equal((await authRequest('/jobs/'+securedId,foreign)).status,404);
  assert.equal((await authLookup(foreign)).status,404);
- assert.equal(calls,beforeAuth+1);
+ assert.equal(calls,beforeAuth+2);
  await stop();
  child=spawn(process.execPath,['--experimental-strip-types','server/main.ts'],{cwd:root,env:{...env,...authEnv},stdio:'ignore'});
  const [downgrade]=await once(child,'exit');assert.notEqual(downgrade,0);child=undefined;
- console.log('D3/BSH11/A3 PASS: HTTP, routing, Superhandy CLI, local adapter fixture, SQLite persistence, restart, legacy and authorization guards.');
+ console.log('D3/BSH11/A3/BSH12 PASS: HTTP, routing, Superhandy CLI, local adapter fixture, SQLite persistence, restart, legacy and authorization guards.');
 }finally{await stop();if(fake.listening){fake.closeAllConnections();await new Promise(r=>fake.close(r));}await rm(dir,{recursive:true,force:true});}

@@ -362,3 +362,7 @@ Base #52 2d640510, main f8e64a98 (286 avanti/0 indietro), backup iteration-30 an
 
 ### F05/F08 — autorizzazione durevole loopback (candidato 27/11)
 Baseline 0c089f23, CI 46020077433: Android/iOS/web success. Lotto isolato: snapshot privato e marker anti-downgrade; fingerprint grant nel payload SQLite; ammissione/lettura/ricevuta scoped e verifica worker live. A1/A2 regressioni e A3 smoke HTTP autenticato predisposti, CI nuova necessaria. Nessun cloud/LAN/TLS, MFA o UI autenticata; bridge e browser in modalità fidata invariati, integrazione protetta ancora da collaudare. RV-01 pendente. F14 #61 resta separato.
+
+
+## 2026-11-27 — F05/F08 BSH12–14 bridge autenticato
+Base #52 a23544aa, main f8e64a98, backup iteration-30 3550c197 antenato (159 avanti/0 indietro); CI 46029638542 Android/web success, iOS cancelled; log Android A1/A2 e A3 smoke PASS. Assegnazione #51 7223767692. Credenziale privata solo con grant, sessione e idempotenza protette, fingerprint nell'intento, rifiuto downgrade/rotazione, ripresa GET senza replay. BSH12 CLI HTTP/SQLite reale con provider sintetico, BSH13/14 regressioni predisposte, non ancora eseguite. #61 separata CI 45901387059 success; review #52/#61 assenti, RV-01 pendente. Gate UI autenticata, provider reale, ACL Windows, installazioni fisiche e review aperti. Nessun costo, cloud, esposizione o modifica workflow.
