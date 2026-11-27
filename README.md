@@ -165,3 +165,14 @@ Confermare personalmente che il runtime sia reale, locale e senza inoltro cloud;
 
 ### Candidato cloud esplicito SQLite (non attivato)
 Solo dopo review e CI, l'operatore può valutare un pilota API locale dedicato: `FORGIA_SQLITE_OPENROUTER_SESSION` identifica una singola sessione UUID autorizzata; richiede modalità SQLite protetta, quota/cache già migrate senza reinizializzazione, modello OpenRouter esplicito `:free` e chiave server autorizzata. Nessun auto/fallback cloud. GET /providers mantiene l'elenco UI locale e restituisce `durableCloudExplicit` solo alla sessione abilitata; POST /jobs richiede bearer, idempotency key, provider openrouter, expectedModel esatto e cloudConsent true. Non impostare questa variabile per prove sintetiche o per aggirare quote; tutti i writer legacy devono essere spenti. Nessuna attivazione o inferenza cloud reale attestata, UI/bridge restano locali. Rollback: rimuovere l'opt-in cloud mantenendo archivi SQLite e auth; non cancellare quota o cache. I job cloud in coda non vengono eseguiti in assenza della policy.
+
+
+### Collaudo reale OpenRouter gratuito — candidato, da autorizzare dopo review e CI
+
+Con Node 24 e checkout pulito, verificare personalmente il modello :free, il credito/limite gratuito effettivo dell'account e il budget residuo Forgia (almeno una richiesta), senza writer/gateway concorrenti. Non usare il runner per ripetere un tentativo incerto, aggirare quote, azzerare archivi reali o utilizzare altri account. Impostare la chiave autorizzata **solo** nell'ambiente privato del processo (OPENROUTER_API_KEY, mai in argomenti, shell history o repo); porta 8787 libera. Consenso esplicito all'invio del solo catalogo sintetico:
+
+```bash
+node scripts/cloud-acceptance.mjs --confirm-free-quota --consent-synthetic-cloud --model vendor/model:free
+```
+
+Sostituire l'ID di esempio con il modello realmente disponibile a costo zero. Il runner usa un archivio temporaneo sintetico con 19/20 slot già occupati per limitare il collaudo a una sola inferenza, senza modificare il ledger reale. Prima di un nuovo avvio riconciliare anche questo tentativo con le quote reali; non ripetere dopo un esito incerto. Evita il confine UTC, usa policy cloud esplicita e controlli prezzo del gateway, disabilita la chiave al riavvio, recupera la ricevuta via GET, verifica quota/cache persistite in sola lettura e revoca; nessun nuovo job cloud per provare la cache. Il riuso cache con nuova chiave resta coperto da EC2 sintetico. Rapporto redatto, uscita non-zero su errore o sospensione. Non prova gratuità dell'account indipendentemente dal controllo dell'operatore, collaudo fisico o RV-01. CA1–CA3 eseguiti dalla suite unit senza rete, il runner reale non viene avviato dalla CI.
