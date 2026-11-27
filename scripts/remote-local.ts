@@ -1,3 +1,4 @@
+import {runRemoteLocalSupervisor} from '../server/remoteLocalSupervisor.ts';
 import {readRemoteNodeStatus} from '../src/core/remoteStatusClient.ts';
 import {setTimeout as delay} from 'node:timers/promises';
 import {initializeWindowsVaultKey,readWindowsVaultKey,assertSeparateWindowsVault} from '../server/remoteWindowsKey.ts';
@@ -100,6 +101,18 @@ async function main(args: string[]) {
     return;
   }
   if (!dir) throw Error('Missing state directory');
+  if (cmd==='run-os' && args.length===5 && b && c) {
+    const port=integer(a,1,65535);
+    if (port===8787) throw Error('Gateway port forbidden');
+    assertSeparateWindowsVault(dir,b);
+    assertSeparateWindowsVault(dir,c);
+    const token=await readVaultCredential(b,'node',c);
+    const outcome=await runRemoteLocalSupervisor(dir,port,token,stop.signal,
+      () => console.log('Local host and authorized heartbeat ready.'));
+    if (outcome==='denied') { console.error('Node authorization denied.'); process.exitCode=2; }
+    else if (outcome==='unavailable') { console.error('Local heartbeat unavailable.'); process.exitCode=1; }
+    return;
+  }
   if (cmd === 'serve' && args.length === 3) {
     const host = await startRemoteLocalHost(dir,integer(a,1,65535));
     try {
