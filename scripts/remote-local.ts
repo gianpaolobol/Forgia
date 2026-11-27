@@ -102,6 +102,18 @@ async function main(args: string[]) {
     return;
   }
   if (!dir) throw Error('Missing state directory');
+  // The diagnostic queue is local only. Operator authority is still checked
+  // transactionally. Credential supplied over the same bounded private pipe.
+  if ((cmd==='snapshot-request'||cmd==='snapshot-read') && args.length===3 && a) {
+    const token=await readCredential();
+    const db=openRemoteLocalDb(dir,'control');
+    try {
+      const store=new RemoteNodeStatus(db);
+      const value=cmd==='snapshot-request'?store.requestSnapshot(token,a):store.readSnapshot(token,a);
+      console.log(JSON.stringify(value));
+    } finally { db.close(); }
+    return;
+  }
   if (cmd==='run-os' && args.length===5 && b && c) {
     const port=integer(a,1,65535);
     if (port===8787) throw Error('Gateway port forbidden');

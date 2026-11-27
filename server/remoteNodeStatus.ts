@@ -37,6 +37,17 @@ export class RemoteNodeStatus {
                       COALESCE((SELECT MAX(seen) FROM rc_nodes),0))
         WHERE NOT EXISTS (SELECT 1 FROM rc_clock WHERE singleton=1);
       CREATE INDEX IF NOT EXISTS rc_grants_scope ON rc_grants(node,role,revoked,expires);
+      CREATE TABLE IF NOT EXISTS rc_snapshots (
+        id TEXT PRIMARY KEY, node TEXT NOT NULL REFERENCES rc_nodes(id),
+        owner TEXT NOT NULL REFERENCES rc_grants(id),
+        worker TEXT NOT NULL REFERENCES rc_grants(id),
+        idem TEXT NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL,
+        completed INTEGER, sequence INTEGER,
+        UNIQUE(owner,idem),
+        CHECK((completed IS NULL AND sequence IS NULL) OR
+              (completed IS NOT NULL AND sequence IS NOT NULL AND sequence>0))
+      );
+      CREATE INDEX IF NOT EXISTS rc_snapshots_worker ON rc_snapshots(worker,completed,created,id);
     `);
   }
 
@@ -164,7 +175,51 @@ export class RemoteNodeStatus {
       if (!node || sequence <= grant.seq || (typeof node.seen === 'number' && now < node.seen)) throw denied();
       this.db.prepare('UPDATE rc_grants SET seq=? WHERE id=?').run(sequence,grant.id);
       this.db.prepare('UPDATE rc_nodes SET seen=? WHERE id=?').run(now,grant.node);
+      // The only supported work is a diagnostic receipt of an authenticated
+      // heartbeat. No user payload, subprocess, network call or external effect.
+      // Complete at most one job in the same transaction as its heartbeat.
+      this.db.prepare(`UPDATE rc_snapshots SET completed=?,sequence=? WHERE id=(
+        SELECT s.id FROM rc_snapshots s JOIN rc_grants o ON o.id=s.owner
+        WHERE s.worker=? AND s.node=? AND s.completed IS NULL AND s.expires>?
+          AND o.role='operator' AND o.node=s.node AND o.revoked=0 AND o.created<=? AND o.expires>?
+        ORDER BY s.created,s.id LIMIT 1)`).run(now,sequence,grant.id,grant.node,now,now,now);
       return {accepted:true as const};
+    });
+  }
+
+  // Local-only operator workflow. Keys are scoped to a single grant. Retain
+  // receipts until that grant expires; never replay an old key on rotation.
+  requestSnapshot(token:string,key:string):{id:string} {
+    if(typeof key!=='string'||!/^[a-zA-Z0-9_-]{16,64}$/.test(key))throw denied();
+    return this.timed(now=>{
+      const grant=this.authorize(token,'operator',now);
+      const prior=this.db.prepare('SELECT id FROM rc_snapshots WHERE owner=? AND idem=?').get(grant.id,key);
+      if(prior)return {id:prior.id as string};
+      const worker=this.db.prepare("SELECT id FROM rc_grants WHERE node=? AND role='node' AND revoked=0 AND created<=? AND expires>?").get(grant.node,now,now);
+      if(!worker)throw denied();
+      this.db.prepare('DELETE FROM rc_snapshots WHERE expires<=?').run(now);
+      const ownerCount=this.db.prepare('SELECT COUNT(*) AS n FROM rc_snapshots WHERE owner=?').get(grant.id)?.n;
+      const total=this.db.prepare('SELECT COUNT(*) AS n FROM rc_snapshots').get()?.n;
+      if(typeof ownerCount!=='number'||typeof total!=='number'||ownerCount>=32||total>=256)throw denied();
+      const id=randomUUID();
+      this.db.prepare('INSERT INTO rc_snapshots(id,node,owner,worker,idem,created,expires) VALUES (?,?,?,?,?,?,?)')
+        .run(id,grant.node,grant.id,worker.id as string,key,now,grant.expires);
+      return {id};
+    });
+  }
+
+  readSnapshot(token:string,id:string) {
+    if(typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id))throw denied();
+    return this.timed(now=>{
+      const grant=this.authorize(token,'operator',now);
+      const row=this.db.prepare('SELECT node,worker,created,completed,sequence FROM rc_snapshots WHERE id=? AND owner=? AND node=? AND expires>?')
+        .get(id,grant.id,grant.node,now);
+      if(!row)throw denied();
+      const active=this.db.prepare("SELECT 1 FROM rc_grants WHERE id=? AND node=? AND role='node' AND revoked=0 AND created<=? AND expires>?")
+        .get(row.worker as string,grant.node,now,now);
+      const state=row.completed!==null?'done':active?'queued':'cancelled';
+      return {id,node:grant.node,state,createdAt:row.created as number,
+        completedAt:row.completed as number|null,sequence:row.sequence as number|null};
     });
   }
 
