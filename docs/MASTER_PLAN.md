@@ -304,3 +304,7 @@ Main f8e64a98, backup iteration-30 3550c197, #52 base c91cf0d4 CI 45907828566 co
 
 ## 2026-11-27 — F09 RC28–RC30 supervisore locale
 Main f8e64a98, backup iteration-30 3550c197 (141 commit avanti, 0 indietro rispetto a backup sul base #52), #52 base 7dafcb43, run 45913574043: tre job success, 294 test elencati, 292 pass, 0 fail, 2 skip Windows-only RC26/RC27; RC25 PASS e 3 smoke PASS dai log Android. #61 c1b88fc CI 45901387059 success separata; nessuna review su #52/#61. Lotto RC28–RC30: avvio foreground unico host loopback + agente heartbeat con grant DPAPI già provisionato, ready solo dopo heartbeat accettato, arresto al primo diniego/indisponibilità, chiusura ordinata e riavvio con sequenza persistente, rifiuto porta occupata/gateway. Test predisposti, nuova CI pendente; non è installazione, servizio Windows, pairing, MFA/TLS o accesso remoto. Nessuna modifica workflow, esposizione, credenziale reale o spesa. RV-01 e prove fisiche/provider gratuiti restano gate; quota sconosciuta.
+
+
+### F09 RC31–RC33 — avvio Windows opt-in
+Candidato: generatore offline Task Scheduler con account interattivo, privilegi minimi, azione run-os fissa, nessun segreto, nessun restart, percorso esplicito e separazione directory. Importazione esclusivamente locale e volontaria dopo prova DPAPI/ACL. Gate: test RC31–RC33, importazione e logon/logoff reali, arresto e revoca, prova fisica iPhone e review RV-01. Nessuna installazione o esposizione implicita. F14 #61 rimane separata.
