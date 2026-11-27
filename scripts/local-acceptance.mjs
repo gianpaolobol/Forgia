@@ -62,7 +62,7 @@ async function runAcceptance(args,cloud){
   }
   child=undefined;
  };
- let pass=false;
+ let pass=false,dispatchMayHaveOccurred=false;
  try{
   model=cloud?parseCloudArgs(args):parseArgs(args);
   const provider=cloud?'openrouter':'llamacpp';
@@ -134,6 +134,8 @@ async function runAcceptance(args,cloud){
   const key='acceptance:p1', payload={session,provider,expectedModel:model,cloudConsent:cloud,idea:'Crea un catalogo offline di nome "'+name+'", senza quiz, con una sola scheda "'+item+'", categoria A, colore non indicato (stringa vuota).'};
   const post=()=>request('/jobs',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':key},body:JSON.stringify(payload)});
   if(cloud)assert.equal(new Date(Date.now()+120000).toISOString().slice(0,10),day);
+  // Mark before sending: a lost response must not imply that no inference occurred.
+  dispatchMayHaveOccurred=true;
   const first=await post();
   assert.equal(first.status,202);
   const id=first.data?.id;
@@ -198,7 +200,7 @@ async function runAcceptance(args,cloud){
   try{await stop();if(dir)await rm(dir,{recursive:true,force:true});}
   catch{pass=false;stage='cleanup';}
  }
- return {pass,sha,model,node:process.versions.node,elapsedMs:Date.now()-started,scope:cloud?'operator-confirmed-openrouter-free-protected-sqlite':'operator-confirmed-loopback-llamacpp-protected-sqlite',checks,...(!pass?{failedStage:stage}:{})};
+ return {pass,sha,model,node:process.versions.node,elapsedMs:Date.now()-started,scope:cloud?'operator-confirmed-openrouter-free-protected-sqlite':'operator-confirmed-loopback-llamacpp-protected-sqlite',dispatchMayHaveOccurred,reconciliationRequired:cloud&&dispatchMayHaveOccurred,checks,...(!pass?{failedStage:stage}:{})};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
  const result=await run(process.argv.slice(2));

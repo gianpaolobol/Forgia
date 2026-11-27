@@ -14,7 +14,7 @@
     "test:ui": "playwright test",
     "portfolio": "node --experimental-strip-types scripts/master-portfolio.ts",
     "test:unit": "node --experimental-strip-types --test tests/*.test.ts && node --test scripts/windows-acceptance.test.mjs && node --test scripts/local-acceptance.test.mjs",
-    "test:integration": "node scripts/test-superhandy-loopback.mjs && node scripts/test-superhandy-grant-loopback.mjs && node scripts/test-durable-loopback.mjs"
+    "test:integration": "node scripts/test-superhandy-loopback.mjs && node scripts/test-superhandy-grant-loopback.mjs && node scripts/test-durable-loopback.mjs && node scripts/test-local-acceptance-loopback.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
