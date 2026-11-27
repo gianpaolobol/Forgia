@@ -95,3 +95,46 @@ test('riprende una ricevuta dopo reload senza ripetere POST', async ({page}) => 
   await expect(page.getByText('Risultato recuperato.')).toBeVisible();
   expect(posts).toBe(1);
 });
+
+test('UW3 protected web receipt resumes with re-entered credentials, without another POST', async ({page})=>{
+ const account='00112233-4455-6677-8899-aabbccddeeff', code='a'.repeat(64), receipt='abcdef01-2345-6789-abcd-ef0123456789';
+ let posts=0,available=false;
+ const headers={'access-control-allow-origin':'*','access-control-allow-headers':'content-type,idempotency-key,authorization,x-forgia-require-auth,x-forgia-session','access-control-allow-methods':'GET,POST,OPTIONS'};
+ await page.route('http://127.0.0.1:8787/**',async route=>{
+  const req=route.request(),path=new URL(req.url()).pathname;
+  if(req.method()==='OPTIONS')return route.fulfill({status:204,headers});
+  expect(req.headers()['authorization']).toBe('Bearer '+code);
+  expect(req.headers()['x-forgia-require-auth']).toBe('1');
+  if(path==='/providers')return route.fulfill({headers,json:{durableAuthorizationRequired:true,durableSession:account,providers:[{id:'local',model:'test',configured:true}]}});
+  if(path==='/jobs' && req.method()==='POST'){
+   posts++;expect(req.postDataJSON().session).toBe(account);expect(req.postDataJSON().cloudConsent).toBe(false);
+   return route.fulfill({status:202,headers,json:{id:receipt}});
+  }
+  expect(path).toBe('/jobs/'+receipt);
+  if(!available)return route.abort();
+  return route.fulfill({headers,json:{status:'done',result:{spec:{name:'Orto',idea:'Risultato protetto recuperato.',kind:'catalog',quiz:false,items:[{name:'Salvia',category:'Piante',color:''}]}}}});
+ });
+ async function enter(){
+  await page.getByRole('button',{name:'Motori AI',exact:true}).click();
+  await page.getByLabel('UUID account locale').fill(account);
+  await page.getByLabel('Codice locale',{exact:true}).fill(code);
+  await page.getByRole('button',{name:'Progetti',exact:true}).click();
+ }
+ await page.goto('/');await enter();
+ await page.getByRole('button',{name:'Crea un progetto'}).click();
+ await page.getByLabel('Nome della tua app').fill('Orto');
+ await page.getByLabel('Descrivi la tua idea').fill('Catalogo di piante.');
+ await page.getByRole('button',{name:'Avvia la chat'}).click();
+ await expect(page.getByRole('button',{name:'Riprendi lavoro AI'})).toBeVisible();
+ const stored=await page.evaluate(()=>JSON.stringify({...localStorage}));
+ expect(stored).not.toContain(code);expect(stored).toContain('protectedLocal');
+ await page.reload();
+ await page.getByRole('button',{name:'Apri Orto'}).click();
+ await page.getByRole('button',{name:'Riprendi lavoro AI'}).click();
+ await expect(page.getByText('Ripristina le autorizzazioni originali della ricevuta. Nessun reinvio.')).toBeVisible();
+ available=true;await enter();
+ await page.getByRole('button',{name:'Apri Orto'}).click();
+ await page.getByRole('button',{name:'Riprendi lavoro AI'}).click();
+ await expect(page.getByText('Risultato protetto recuperato.')).toBeVisible();
+ expect(posts).toBe(1);
+});

@@ -6,6 +6,7 @@ import {createConversationRepository, requestedAccess, type Conversation} from '
 import {lanPilotOrigin, pilotConnection} from '../core/lanPilot';
 import {closeJob, decodeJobRecovery, recoveryAction, type JobRecovery} from '../core/jobRecovery';
 import {receiptLookupHeaders} from '../core/receiptLookup';
+import {localWebAuth, verifyLocalWebMode, verifyLocalWebRecovery} from '../core/localWebAuth';
 import {generateProject} from '../core/generator';
 import {exportBundle} from './export';
 
@@ -45,6 +46,9 @@ export function useWorkspace() {
   const [selected, setSelected] = useState('auto');
   const [consent, setConsent] = useState(false);
   const [testerCode, setTesterCode] = useState('');
+  const [localAccount, setLocalAccount] = useState('');
+  const [localCode, setLocalCode] = useState('');
+  const webLocal = Platform.OS === 'web';
   const [pilotAddress, setPilotAddress] = useState(() => pilotProfile().initialAddress ?? '');
   const {nativePilot, iosLanPilot, api} = pilotProfile(pilotAddress);
   const [engineNote, setEngineNote] = useState('Nessun motore AI collegato');
@@ -95,8 +99,14 @@ export function useWorkspace() {
     setPilotAddress(value);
   }
 
+  function changeLocalCredential(field:'account'|'code', value:string) {
+    if(locked.current)return;
+    if(field==='account')setLocalAccount(value);else setLocalCode(value);
+    setProviders([]);setEngineNote('Nessun motore AI collegato');
+  }
+
   function credentials(): Record<string, string> {
-    if (Platform.OS === 'web') return {};
+    if (webLocal) return localWebAuth(api,localAccount,localCode)?.headers ?? {};
     const code = testerCode.trim().toLowerCase();
     if (!/^[a-f0-9]{64}$/.test(code)) throw Error('Inserisci il codice tester in Motori AI.');
     return {Authorization: 'Bearer ' + code};
@@ -106,6 +116,7 @@ export function useWorkspace() {
     if (!api) throw Error(iosLanPilot ? 'Inserisci l’indirizzo HTTPS del gateway pilota sulla rete locale.' : 'Gateway AI mobile non configurato per questa build.');
     const {response, body: data} = await gatewayRequest(api + '/providers', {headers: credentials()}, 4000);
     if (!response.ok) throw Error(data.error ?? 'Gateway AI non raggiungibile.');
+    if(webLocal)verifyLocalWebMode(data,localWebAuth(api,localAccount,localCode));
     const available: typeof providers = data.providers.filter((item: typeof providers[number]) => item.configured);
     setProviders(available);
     setEngineNote(available.length ? (nativePilot ? 'Gateway pilota collegato' : 'Gateway locale collegato') : 'Nessun motore AI collegato');
@@ -113,20 +124,24 @@ export function useWorkspace() {
   }
 
   async function refreshEngines() {
-    setError('');
-    try { await readProviders(); }
-    catch (cause) { setProviders([]); setEngineNote('Nessun motore AI collegato'); setError(errorText(cause)); }
+    return run(async()=>{
+      try { await readProviders(); }
+      catch (cause) { setProviders([]); setEngineNote('Nessun motore AI collegato'); throw cause; }
+    });
   }
 
   async function askAI(row: Conversation) {
     if (!api) return;
     const origin = api;
     const last = row.turns[row.turns.length - 1];
+    const localAuth=webLocal ? localWebAuth(origin,localAccount,localCode) : undefined;
+    if(webLocal)verifyLocalWebRecovery(last.job,localAuth);
     const action = recoveryAction(last.job, origin);
     const lookupHeaders = receiptLookupHeaders(last.job,origin,row.id,last.requestId);
     if (action === 'blocked' && !lookupHeaders) throw Error('Richiesta già avviata, chiusa o appartenente a un altro gateway. Nessun nuovo invio automatico.');
     let jobId: string;
     const authorization = credentials();
+    if(localAuth && action!=='submit')await readProviders();
 
     async function saveJob(job: JobRecovery) {
       row = {...row, turns:[...row.turns.slice(0,-1), {...row.turns[row.turns.length-1],job}]};
@@ -137,7 +152,7 @@ export function useWorkspace() {
       jobId = last.job.id;
     } else if (lookupHeaders && last.job?.state === 'submitting') {
       setJobStatus('Ricerca della ricevuta originale…');
-      const {response,body:receipt} = await gatewayRequest(origin+'/jobs/receipt',{method:'GET',headers:lookupHeaders},8000);
+      const {response,body:receipt} = await gatewayRequest(origin+'/jobs/receipt',{method:'GET',headers:{...lookupHeaders,...authorization}},8000);
       if (!response.ok) throw Error('Ricevuta non trovata o gateway non compatibile. Nessun reinvio automatico.');
       const accepted = decodeJobRecovery({...last.job,state:'accepted',id:receipt.id});
       if (accepted.state !== 'accepted') throw Error('Ricevuta non valida.');
@@ -162,8 +177,9 @@ export function useWorkspace() {
         instruction: last.text,
       });
       if (boundedPrompt.length > 8000) throw Error('Il messaggio è troppo lungo per il motore. Dividilo in più messaggi.');
-      if (!nativePilot) session.current ||= globalThis.crypto.randomUUID();
-      const context = {origin, ...(nativePilot ? {} : {session:session.current})};
+      if (!nativePilot && !localAuth) session.current ||= globalThis.crypto.randomUUID();
+      const requestSession = nativePilot ? undefined : localAuth?.session ?? session.current;
+      const context = {origin, ...(nativePilot ? {} : {session:requestSession}), ...(localAuth ? {protectedLocal:true} : {})};
       const marker = decodeJobRecovery({...context,state:'submitting'});
       row = {...row, turns:[...row.turns.slice(0,-1), {...last,requestId}]};
       // The marker MUST be durable before dispatch. A lost receipt is ambiguous:
@@ -173,8 +189,8 @@ export function useWorkspace() {
         method:'POST',
         headers:{...authorization,'Content-Type':'application/json',
           'Idempotency-Key':encodeURIComponent(row.id)+':'+requestId},
-        body:JSON.stringify({session:session.current, idea:boundedPrompt, provider:selected,
-          cloudConsent:consent, kind:row.spec?.kind, phase:row.spec?'revision':'draft'}),
+        body:JSON.stringify({session:requestSession, idea:boundedPrompt, provider:selected,
+          cloudConsent:localAuth ? false : consent, kind:row.spec?.kind, phase:row.spec?'revision':'draft'}),
       },8000);
       if (!response.ok) throw Error(receipt.error ?? 'Richiesta non confermata: nessun reinvio automatico.');
       const accepted = decodeJobRecovery({...context,state:'accepted',id:receipt.id});
@@ -267,7 +283,7 @@ export function useWorkspace() {
   return {page, projects, project, ready, busy, jobStatus, error, name, setName, idea, setIdea, note, setNote,
     providers, selected, setSelected, consent, setConsent, engineNote, access, go, start, open, create, send,
     retry, abandonJob, download, refreshEngines, liveAI: !!api,
-    canLookupReceipt: !!(api && project && receiptLookupHeaders(project.turns.at(-1)?.job,api,project.id,project.turns.at(-1)?.requestId)), nativePilot, iosLanPilot, pilotAddress, changePilotAddress, testerCode, setTesterCode};
+    canLookupReceipt: !!(api && project && receiptLookupHeaders(project.turns.at(-1)?.job,api,project.id,project.turns.at(-1)?.requestId)), nativePilot, iosLanPilot, pilotAddress, changePilotAddress, testerCode, setTesterCode, webLocal, localAccount, localCode, changeLocalCredential};
 }
 
 export type Workspace = ReturnType<typeof useWorkspace>;
