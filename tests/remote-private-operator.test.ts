@@ -88,7 +88,7 @@ test('RC44 live revocation, expiry and duplicate bearer fail closed',async()=>{
   }finally{await f.close();}
 });
 test('RC45 rejects unsafe configuration before binding',async()=>{
-  const store={status:()=>({node:'pc',online:false,lastSeenAt:null}),requestSnapshot:()=>{throw Error('unused');},readSnapshot:()=>{throw Error('unused');}};
+  const store={status:()=>({node:'pc',online:false,lastSeenAt:null}),requestSnapshot:()=>{throw Error('unused');},readSnapshot:()=>{throw Error('unused');},findSnapshot:()=>{throw Error('unused');}};
   for(const config of [
     {host:'127.0.0.1',login,port:0},{host:'workstation.example.ts.net.evil.invalid',login,port:0},
     {host,login:'*',port:0},{host,login,port:8787},{host,login,port:-1},
@@ -150,5 +150,51 @@ test('RC54 private UI exposes diagnostic controls without embedding credentials 
    assert.ok(!page.body.includes(f.op.token)&&!script.body.includes(f.op.token));
    assert.doesNotMatch(script.body,/localStorage|sessionStorage/);
    assert.equal((await get(f.server,'/v1/jobs',[...f.auth(f.op.token),...postHeaders],'POST')).status,400);
+ }finally{await f.close();}
+});
+
+const lookupHeaders=['Sec-Fetch-Site','same-origin','Idempotency-Key',snapshotKey];
+test('RC55 recovery by original key is read-only before and after heartbeat',async()=>{
+ const f=await fixture();
+ try{
+   const auth=f.auth(f.op.token);
+   const lookup=()=>get(f.server,'/v1/snapshots',[...auth,...lookupHeaders]);
+   assert.deepEqual(JSON.parse((await lookup()).body),{id:null});
+   const first=await get(f.server,'/v1/snapshots',[...auth,...postHeaders],'POST');
+   assert.equal(first.status,202);
+   const id=JSON.parse(first.body).id;
+   assert.deepEqual(JSON.parse((await lookup()).body),{id});
+   f.advance(2000);f.store.heartbeat(f.node.token,2);
+   assert.deepEqual(JSON.parse((await lookup()).body),{id});
+   assert.equal(JSON.parse((await get(f.server,'/v1/snapshots/'+id,auth)).body).sequence,2);
+   assert.deepEqual(JSON.parse((await get(f.server,'/v1/snapshots',[...auth,'Sec-Fetch-Site','same-origin','Idempotency-Key','another_key_00001'])).body),{id:null});
+ }finally{await f.close();}
+});
+test('RC56 recovery isolates grants, roles and revocation',async()=>{
+ const f=await fixture();
+ try{
+   const first=await get(f.server,'/v1/snapshots',[...f.auth(f.op.token),...postHeaders],'POST');
+   assert.equal(first.status,202);
+   const sameNode=f.store.issue('pc','operator',5000);
+   for(const token of [sameNode.token,f.other.token]){
+     const res=await get(f.server,'/v1/snapshots',[...f.auth(token),...lookupHeaders]);
+     assert.equal(res.status,200);assert.deepEqual(JSON.parse(res.body),{id:null});
+   }
+   assert.equal((await get(f.server,'/v1/snapshots',[...f.auth(f.node.token),...lookupHeaders])).status,401);
+   f.store.revoke(f.op.id);
+   assert.equal((await get(f.server,'/v1/snapshots',[...f.auth(f.op.token),...lookupHeaders])).status,401);
+ }finally{await f.close();}
+});
+test('RC57 recovery requires same-origin and valid single key; no query or body',async()=>{
+ const f=await fixture();
+ try{
+   const auth=f.auth(f.op.token);
+   for(const extra of [['Idempotency-Key',snapshotKey],['Sec-Fetch-Site','same-origin','Idempotency-Key','bad'],[...lookupHeaders,'Idempotency-Key',snapshotKey],[...lookupHeaders,'Content-Length','1']]){
+     assert.equal((await get(f.server,'/v1/snapshots',[...auth,...extra])).status,400);
+   }
+   assert.equal((await get(f.server,'/v1/snapshots',[...auth,'Sec-Fetch-Site','cross-site','Idempotency-Key',snapshotKey])).status,403);
+   assert.equal((await get(f.server,'/v1/snapshots?key='+snapshotKey,[...auth,...lookupHeaders])).status,404);
+   assert.match((await get(f.server,'/operator',standard)).body,/snapshot-lookup/);
+   assert.match((await get(f.server,'/operator.js',standard)).body,/Nessun reinvio effettuato/);
  }finally{await f.close();}
 });

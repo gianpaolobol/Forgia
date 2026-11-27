@@ -208,6 +208,17 @@ export class RemoteNodeStatus {
     });
   }
 
+  // Recovery never creates or replays a request.
+  findSnapshot(token:string,key:string):{id:string|null} {
+    if(typeof key!=='string'||!/^[a-zA-Z0-9_-]{16,64}$/.test(key))throw denied();
+    return this.timed(now=>{
+      const grant=this.authorize(token,'operator',now);
+      const row=this.db.prepare('SELECT id FROM rc_snapshots WHERE owner=? AND node=? AND idem=? AND expires>?')
+        .get(grant.id,grant.node,key,now);
+      return {id:row?row.id as string:null};
+    });
+  }
+
   readSnapshot(token:string,id:string) {
     if(typeof id!=='string'||!/^[a-f0-9-]{36}$/.test(id))throw denied();
     return this.timed(now=>{

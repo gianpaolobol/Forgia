@@ -326,3 +326,7 @@ Base #52 24d90f04, run 45942770381 primo tentativo: check e npm test passati (RC
 
 ### RC51–RC54 — F09/F10 verticale diagnostico privato (candidato)
 Estende RC46–50 con POST diagnostico senza payload, origine HTTPS/same-origin e chiave idempotente, GET ricevuta scoped e UI esplicita senza credenziali persistenti. Quattro regressioni HTTP predisposte; CI cumulativa, pairing/TLS/MFA/ACL fisici, provider cloud free e RV-01 ancora gate. F14 #61 separata; nessuna esposizione gateway o spesa.
+
+
+## 2026-11-27 — F09/F10 RC55–RC57 recupero diagnostico senza reinvio
+Base #52 a3ad2ba, CI 45955061680: Android (check e npm test, RC46–RC54 PASS dai log), iOS simulator e web success. Main f8e64a98; backup iteration-30 3550c197 antenato (149 avanti/0 indietro); #61 c1b88fc CI 45901387059 success separata; RV-01 assente. Assegnazione #51 7212986908. Lookup read-only con chiave originale e grant originale, header e same-origin obbligatori, nessuna creazione o retry, risultato null se assente, nessuna rivelazione tra grant. UI esplicita di recupero. Tre regressioni HTTP predisposte, nuova CI pendente; nessun proxy attivato, spesa o modifica workflow. Installazioni fisiche, TLS/MFA/ACL, provider cloud free e review restano gate.
