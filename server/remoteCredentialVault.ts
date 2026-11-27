@@ -14,8 +14,13 @@ const aad = (role: VaultRole) => Buffer.from('forgia-remote-credential:v1:'+role
 // SQLite insert is atomic; an existing role is never silently overwritten.
 export class RemoteCredentialVault {
   private readonly db: DatabaseSync;
-  constructor(db: DatabaseSync) {
+  constructor(db: DatabaseSync, existingOnly = false) {
     this.db=db;
+    if (existingOnly) {
+      if (!db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='remote_credential_v1'").get())
+        throw Error('Vault requires initialized state');
+      return;
+    }
     db.exec(`CREATE TABLE IF NOT EXISTS remote_credential_v1 (
       role TEXT PRIMARY KEY CHECK(role IN ('node','operator')),
       iv BLOB NOT NULL CHECK(length(iv)=12),

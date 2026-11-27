@@ -51,8 +51,8 @@ async function readSecretLines(count: 1 | 2) {
 async function readCredential() { return (await readSecretLines(1))[0]; }
 async function readVaultCredential(directory: string,role: VaultRole,keyDirectory?:string) {
   const key=keyDirectory ? (assertSeparateWindowsVault(directory,keyDirectory),readWindowsVaultKey(keyDirectory)) : await readCredential();
-  const db=openRemoteLocalDb(directory,'vault');
-  try { return new RemoteCredentialVault(db).read(role,key); }
+  const db=openRemoteLocalDb(directory,'vault',true);
+  try { return new RemoteCredentialVault(db,true).read(role,key); }
   finally { db.close(); }
 }
 

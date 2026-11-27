@@ -1,5 +1,5 @@
 import {setTimeout as delay} from 'node:timers/promises';
-import {openRemoteLocalDb,startRemoteLocalHost} from './remoteLocalRuntime.ts';
+import {openRemoteLocalDb,openRemotePrivateControl,startRemoteLocalHost} from './remoteLocalRuntime.ts';
 import {RemoteHeartbeatAgent} from './remoteHeartbeatAgent.ts';
 
 export type LocalSupervisorOutcome='stopped'|'denied'|'unavailable';
@@ -13,6 +13,8 @@ export async function runRemoteLocalSupervisor(
   if (!Number.isSafeInteger(port)||port<0||port>65535||port===8787||
       !/^[a-f0-9]{64}$/.test(token)) throw Error('Invalid local supervisor configuration');
   if (signal.aborted) return 'stopped';
+  // A supervisor is a runtime entry point, not an administrative bootstrap.
+  openRemotePrivateControl(directory).close();
   const host=await startRemoteLocalHost(directory,port);
   try {
     if (signal.aborted) return 'stopped';

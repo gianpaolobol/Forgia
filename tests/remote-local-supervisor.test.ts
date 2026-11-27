@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
+import {mkdtempSync,realpathSync,rmSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {runRemoteLocalSupervisor} from '../server/remoteLocalSupervisor.ts';
@@ -59,4 +59,21 @@ test('RC30 supervisor refuses occupied or gateway port, and pre-aborted start', 
     stop.abort();
     assert.equal(await runRemoteLocalSupervisor(dir,0,node.token,stop.signal),'stopped');
   } finally { await host.close(); rmSync(dir,{recursive:true,force:true}); }
+});
+
+
+test('RC64 supervisor refuses missing or uninitialized control state without bootstrap',async()=>{
+  const dir=mkdtempSync(join(realpathSync(tmpdir()),'forgia-supervised-empty-'));
+  const token='a'.repeat(64),signal=new AbortController().signal;
+  try {
+    await assert.rejects(runRemoteLocalSupervisor(dir,0,token,signal));
+    assert.equal(existsSync(join(dir,'control.sqlite')),false);
+    assert.equal(existsSync(join(dir,'agent.sqlite')),false);
+    openRemoteLocalDb(dir,'control').close();
+    await assert.rejects(runRemoteLocalSupervisor(dir,0,token,signal),/initialized control state/);
+    const db=openRemoteLocalDb(dir,'control',true);
+    try { assert.equal(db.prepare("SELECT 1 FROM sqlite_schema WHERE name='rc_nodes'").get(),undefined); }
+    finally { db.close(); }
+    assert.equal(existsSync(join(dir,'agent.sqlite')),false);
+  } finally { rmSync(dir,{recursive:true,force:true}); }
 });

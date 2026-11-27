@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
-import {mkdtempSync,realpathSync,rmSync,readFileSync} from 'node:fs';
+import {mkdtempSync,realpathSync,rmSync,readFileSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {spawn,spawnSync} from 'node:child_process';
@@ -90,5 +90,22 @@ test('RC24 vault import rejects malformed pipe and never echoes secrets',()=>{
     assert.ok(!result.stderr.includes(k));
     const forbidden=run(['status-vault',dir,'8787'],k+'\n');
     assert.equal(forbidden.status,1); assert.equal(forbidden.stdout,'');
+  } finally { rmSync(dir,{recursive:true,force:true}); }
+});
+
+
+test('RC63 runtime vault reads refuse missing or uninitialized archives without bootstrap',()=>{
+  const dir=temp(), k=key();
+  try {
+    const denied=run(['status-vault',dir,'8791'],k+'\n');
+    assert.equal(denied.status,1);assert.equal(denied.stdout,'');
+    assert.ok(!denied.stderr.includes(k));
+    assert.equal(existsSync(join(dir,'credentials.sqlite')),false);
+    const db=openRemoteLocalDb(dir,'vault');db.close();
+    const empty=run(['status-vault',dir,'8791'],k+'\n');
+    assert.equal(empty.status,1);assert.equal(empty.stdout,'');
+    const check=openRemoteLocalDb(dir,'vault',true);
+    try { assert.equal(check.prepare("SELECT 1 FROM sqlite_schema WHERE name='remote_credential_v1'").get(),undefined); }
+    finally { check.close(); }
   } finally { rmSync(dir,{recursive:true,force:true}); }
 });

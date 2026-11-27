@@ -11,6 +11,7 @@ import {RemoteHeartbeatAgent} from '../server/remoteHeartbeatAgent.ts';
 import {RemoteCredentialVault} from '../server/remoteCredentialVault.ts';
 import {provisionRemoteCredential} from '../server/remoteLocalProvision.ts';
 import {listenPrivateOperator} from '../server/remotePrivateOperator.ts';
+import {initializeWindowsVaultKey,readWindowsVaultKey} from '../server/remoteWindowsKey.ts';
 
 const host='workstation.example.ts.net',login='operator@example.invalid';
 const key='vertical_snapshot_0001';
@@ -65,18 +66,22 @@ test('RC58 private operator refuses absent or uninitialized state without bootst
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
 
-test('RC59/RC60 durable vertical: vault provisioning, independent HTTP listeners, restart, recovery and live revocation',
- {timeout:30_000},async()=>{
+async function durableVertical(windowsKey:boolean){
   const root=temp(),state=join(root,'state'),vaultDir=join(root,'vault');
   mkdirSync(state,{mode:0o700});mkdirSync(vaultDir,{mode:0o700});
-  const vaultKey=randomBytes(32).toString('hex');
+  const keyDir=join(root,'keys');
+  const syntheticKey=windowsKey?'':randomBytes(32).toString('hex');
   try{
+    if(windowsKey){mkdirSync(keyDir);initializeWindowsVaultKey(keyDir);}
+    const getKey=()=>windowsKey?readWindowsVaultKey(keyDir):syntheticKey;
+    const vaultKey=getKey();
     withControl(state,s=>s.register('pc'));
     const node=provisionRemoteCredential(state,vaultDir,'pc','node',120_000,vaultKey);
     const operator=provisionRemoteCredential(state,vaultDir,'pc','operator',120_000,vaultKey);
-    const nodeToken=loadToken(vaultDir,'node',vaultKey),opToken=loadToken(vaultDir,'operator',vaultKey);
     let receiptId='';
     async function cycle(restart:boolean){
+      const keyOnRestart=getKey();
+      const nodeToken=loadToken(vaultDir,'node',keyOnRestart),opToken=loadToken(vaultDir,'operator',keyOnRestart);
       const local=await startRemoteLocalHost(state,0);
       try{
         const remote=await privateHost(state);
@@ -122,4 +127,9 @@ test('RC59/RC60 durable vertical: vault provisioning, independent HTTP listeners
     await cycle(false);
     await cycle(true);
   }finally{rmSync(root,{recursive:true,force:true});}
-});
+}
+
+test('RC59/RC60 durable vertical: vault provisioning, independent HTTP listeners, restart, recovery and live revocation',
+  {timeout:30_000},()=>durableVertical(false));
+test('RC65 Windows DPAPI durable vertical: key reopened on restart, diagnostic recovery and revocation',
+  {skip:process.platform!=='win32',timeout:90_000},()=>durableVertical(true));
