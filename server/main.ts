@@ -68,7 +68,7 @@ function buildJobs(store: typeof storage, isolated: boolean, authorize?: JobAuth
 }
 const durableJobs = localLedger ? createDurableLocalJobs(
  localLedger,
- (input,backlog,session,signal)=>executePlan(input,backlog,session,true,signal),
+ (input,backlog,session,signal)=>executePlan(input,backlog,input.authorizationGrant?`${session}:${input.authorizationGrant}`:session,true,signal),
  (id)=>{const config=configs.find(c=>c.id===id&&localProvider(c.id));try{return config?configuredProvider(config).model:undefined;}catch{return undefined;}},
  durableAuth?.active,
 ) : undefined;
@@ -95,7 +95,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
      return {id: config.id, model: config.model, profile: config.profile, configured: false};
     }
    });
-   res.end(JSON.stringify({mode:'free-only',providers,localDevelopmentOnly:session === undefined,durableLocal:jobs===durableJobs,durableModelPin:jobs===durableJobs,durableAuthorizationRequired:jobs===durableJobs&&sqliteAuth}));return;
+   res.end(JSON.stringify({mode:'free-only',providers,localDevelopmentOnly:jobs===localJobs,durableLocal:jobs===durableJobs,durableModelPin:jobs===durableJobs,durableAuthorizationRequired:jobs===durableJobs&&sqliteAuth}));return;
   }
   if (req.method === 'GET' && req.url === '/jobs/receipt') {
    if (!durableJobs || jobs !== durableJobs) return reply(res,404,{error:'Recupero ricevuta non disponibile.'});
@@ -173,6 +173,9 @@ if (process.env.FORGIA_DISABLE_WEB_GATEWAY !== '1') createServer((req, res) => {
   return;
  }
  if(durableAuth){
+  res.setHeader('Cache-Control','no-store');
+  res.setHeader('Content-Type','application/json');
+  res.setHeader('X-Content-Type-Options','nosniff');
   let identity:ReturnType<typeof durableAuth.identity>;
   try{identity=durableAuth.identity(req.headers.authorization);}
   catch{return reply(res,503,{error:'Accesso locale temporaneamente indisponibile.'});}

@@ -1,4 +1,4 @@
-import {closeSync,constants,fstatSync,lstatSync,openSync,readFileSync} from 'node:fs';
+import {closeSync,constants,fstatSync,lstatSync,openSync,readFileSync,type Stats} from 'node:fs';
 import {join} from 'node:path';
 import {pilotGrant,pilotGrantActive,validatePilotAccounts} from './pilot.ts';
 
@@ -11,7 +11,7 @@ export function prepareDurableLocalAuth(directory:string,enabled:boolean) {
  const marker=join(directory,'auth-required'),accounts=join(directory,'accounts.json');
  const saved=entry(marker),accountEntry=entry(accounts);
  if(!enabled){if(saved||accountEntry)throw Error('Archivio autorizzazioni presente: mantenere opt-in o riconciliare offline.');return;}
- const privateFile=(s:ReturnType<typeof lstatSync>)=>s.isFile()&&(process.platform==='win32'||!(s.mode&0o077));
+ const privateFile=(s:Stats)=>s.isFile()&&(process.platform==='win32'||!(s.mode&0o077));
  const dir=lstatSync(directory);
  if(!dir.isDirectory()||(process.platform!=='win32'&&(dir.mode&0o077)))throw Error('Directory autorizzazioni non privata.');
  function read():unknown {

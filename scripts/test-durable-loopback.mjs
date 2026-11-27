@@ -6,7 +6,7 @@ import {spawn,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {createHash} from 'node:crypto';
 import {once} from 'node:events';
-import {mkdtemp,rm,writeFile,readFile,readdir} from 'node:fs/promises';
+import {mkdtemp,mkdir,rm,writeFile,readFile,readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -128,5 +128,49 @@ try{
  // A normal legacy launch must refuse an existing cutover directory.
  child=spawn(process.execPath,['--experimental-strip-types','server/main.ts'],{cwd:root,env:{...env,FORGIA_SQLITE_LOCAL:'0'},stdio:'ignore'});
  const [code]=await once(child,'exit');assert.notEqual(code,0);child=undefined;
- console.log('D3/BSH11 PASS: HTTP, routing, Superhandy CLI, local adapter fixture, SQLite persistence, restart, legacy guard.');
+ // Guarded loopback smoke on separate throwaway database, same synthetic local provider.
+ rateLimited=false;
+ const authDir=join(dir,'auth-fixture'),authEnv={FORGIA_DATA_DIR:authDir};
+ await mkdir(authDir,{mode:0o700});await writeFile(join(authDir,'jobs.v1.json'),'[]',{mode:0o600});
+ await start({...authEnv,FORGIA_SQLITE_INITIALIZE:'1'});await stop();
+ const token='a'.repeat(64),foreign='b'.repeat(64),other='00000000-0000-0000-0000-000000000002';
+ const account=(id,value)=>({id,sha256:createHash('sha256').update(value).digest('hex'),expiresAt:new Date(Date.now()+600000).toISOString()});
+ const accountPath=join(authDir,'sqlite-loopback','accounts.json');
+ await writeFile(accountPath,JSON.stringify([account(session,token),account(other,foreign)]),{mode:0o600});
+ const guarded={...authEnv,FORGIA_SQLITE_LOCAL_AUTH:'1'};
+ const authRequest=(path,credential,options={})=>request(path,{...options,headers:{...options.headers,Authorization:'Bearer '+credential}});
+ const authPost=(payload,credential=token)=>authRequest('/jobs',credential,{method:'POST',headers:{'content-type':'application/json','idempotency-key':'p1:p2'},body:JSON.stringify(payload)});
+ const authLookup=(credential=token,s=session)=>authRequest('/jobs/receipt',credential,{headers:{'X-Forgia-Session':s,'Idempotency-Key':'p1:p2'}});
+ await start(guarded);
+ assert.equal((await request('/providers')).status,401);
+ assert.equal((await authRequest('/providers','c'.repeat(64))).status,401);
+ const capabilities=await (await authRequest('/providers',token)).json();
+ assert.equal(capabilities.durableAuthorizationRequired,true);assert.equal(capabilities.localDevelopmentOnly,true);
+ assert.equal((await authPost({...body,session:other})).status,403);
+ const beforeAuth=calls;
+ const secured=await authPost({...body,provider:'local',expectedModel:'fixture-local'});
+ assert.equal(secured.status,202);const {id:securedId}=await secured.json();
+ assert.equal((await (await authPost({...body,provider:'local',expectedModel:'fixture-local'})).json()).id,securedId);
+ assert.deepEqual(await (await authLookup()).json(),{id:securedId});
+ assert.equal((await authLookup(foreign)).status,404);
+ assert.equal((await authRequest('/jobs/'+securedId,foreign)).status,404);
+ assert.equal((await request('/jobs/'+securedId)).status,401);
+ let securedResult;
+ for(let i=0;i<100;i++){
+  const r=await authRequest('/jobs/'+securedId,token);assert.equal(r.status,200);
+  const j=await r.json();if(j.status==='done'||j.status==='failed'){securedResult=j;break;}await delay(50);
+ }
+ assert.equal(securedResult?.status,'done');assert.deepEqual(securedResult.result.spec,spec);assert.equal(calls,beforeAuth+1);
+ await stop();await start(guarded);
+ assert.deepEqual(await (await authRequest('/jobs/'+securedId,token)).json(),securedResult);
+ assert.deepEqual(await (await authLookup()).json(),{id:securedId});
+ await writeFile(accountPath,JSON.stringify([account(session,foreign)]));
+ assert.equal((await authRequest('/jobs/'+securedId,token)).status,401);
+ assert.equal((await authRequest('/jobs/'+securedId,foreign)).status,404);
+ assert.equal((await authLookup(foreign)).status,404);
+ assert.equal(calls,beforeAuth+1);
+ await stop();
+ child=spawn(process.execPath,['--experimental-strip-types','server/main.ts'],{cwd:root,env:{...env,...authEnv},stdio:'ignore'});
+ const [downgrade]=await once(child,'exit');assert.notEqual(downgrade,0);child=undefined;
+ console.log('D3/BSH11/A3 PASS: HTTP, routing, Superhandy CLI, local adapter fixture, SQLite persistence, restart, legacy and authorization guards.');
 }finally{await stop();if(fake.listening){fake.closeAllConnections();await new Promise(r=>fake.close(r));}await rm(dir,{recursive:true,force:true});}

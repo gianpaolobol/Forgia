@@ -361,4 +361,4 @@ Base #52 2d640510, main f8e64a98 (286 avanti/0 indietro), backup iteration-30 an
 
 
 ### F05/F08 — autorizzazione durevole loopback (candidato 27/11)
-Baseline 0c089f23, CI 46020077433: Android/iOS/web success. Lotto isolato: snapshot privato e marker anti-downgrade; fingerprint grant nel payload SQLite; ammissione/lettura/ricevuta scoped e verifica worker live. A1/A2 regressioni predisposte, CI nuova necessaria. Nessun cloud/LAN/TLS, MFA o UI autenticata; bridge e browser in modalità fidata invariati, integrazione protetta ancora da collaudare. RV-01 pendente. F14 #61 resta separato.
+Baseline 0c089f23, CI 46020077433: Android/iOS/web success. Lotto isolato: snapshot privato e marker anti-downgrade; fingerprint grant nel payload SQLite; ammissione/lettura/ricevuta scoped e verifica worker live. A1/A2 regressioni e A3 smoke HTTP autenticato predisposti, CI nuova necessaria. Nessun cloud/LAN/TLS, MFA o UI autenticata; bridge e browser in modalità fidata invariati, integrazione protetta ancora da collaudare. RV-01 pendente. F14 #61 resta separato.
