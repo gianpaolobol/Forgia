@@ -25,6 +25,7 @@ export async function runOneDurableJob(ledger: Ledger, options: Options): Promis
   const now = options.now ?? Date.now;
   const row = ledger.claim(options.worker, now(), ttl);
   if (!row) return 'idle';
+  const session = row.session;
   const lease = {id:row.id, fence:row.fence, worker:options.worker};
   const fail = (error: string, statusCode: number): Outcome => ledger.failClaim(lease,now(),JSON.stringify({error,statusCode})) ? 'failed' : 'lease-lost';
   let input: DurableInput;
@@ -34,7 +35,7 @@ export async function runOneDurableJob(ledger: Ledger, options: Options): Promis
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const expired = new Promise<never>((_,reject) => { timer = setTimeout(() => reject(Error('Autorizzazione scaduta.')),timeoutMs); });
-      return await Promise.race([Promise.resolve().then(() => options.authorize(row.session,input)),expired]);
+      return await Promise.race([Promise.resolve().then(() => options.authorize(session,input)),expired]);
     } finally { clearTimeout(timer); }
   }
   let authorized: boolean;
@@ -82,7 +83,7 @@ export async function runOneDurableJob(ledger: Ledger, options: Options): Promis
   try {
     let result: string;
     try {
-      const value = await Promise.race([Promise.resolve().then(() => options.run(input,row.session,controller.signal)), stopped]);
+      const value = await Promise.race([Promise.resolve().then(() => options.run(input,session,controller.signal)), stopped]);
       if (controller.signal.aborted) throw Error('Worker interrotto.');
       result = JSON.stringify(value);
       if (typeof result !== 'string' || Buffer.byteLength(result) > 4 * 1024 * 1024) throw Error('Risultato non valido.');

@@ -145,3 +145,36 @@ test('W13 an unavailable final authorization cannot publish a result',async t =>
   assert.equal(await runOneDurableJob(ledger,{worker:'w',ttl:90,authorize:async()=>{if(dispatched)throw Error('private');return true;},run:async()=>{dispatched=true;return {secret:'private'};}}),'uncertain');
   assert.equal(ledger.read(id,session)?.result,null);
 });
+
+
+test('W14 final check does not reuse a successful in-flight poll predating revocation',async t => {
+  const {ledger}=fixture(t), id=ledger.enqueue(session,null,payload);
+  let checks=0, releasePoll!:()=>void, pollStarted!:()=>void;
+  const started=new Promise<void>(resolve=>{pollStarted=resolve;});
+  const poll=new Promise<boolean>(resolve=>{releasePoll=()=>resolve(true);});
+  const outcome=await runOneDurableJob(ledger,{worker:'w',ttl:300,maxRunMs:2000,authorize:async()=>{
+    checks++;
+    if(checks===1)return true;
+    if(checks===2){pollStarted();return poll;}
+    return false;
+  },run:async()=>{
+    await started;
+    releasePoll();
+    return {privateResult:true};
+  }});
+  assert.equal(outcome,'uncertain');
+  assert.equal(checks,3);
+  assert.equal(ledger.read(id,session)?.result,null);
+});
+
+test('W15 final authorization timeout cannot publish or requeue a dispatched job',async t => {
+  const {ledger}=fixture(t), id=ledger.enqueue(session,'final-timeout',payload);
+  let checks=0;
+  const outcome=await runOneDurableJob(ledger,{worker:'w',ttl:90,maxRunMs:2000,authorize:async()=>{
+    if(++checks===1)return true;
+    return new Promise<boolean>(()=>{});
+  },run:async()=>({privateResult:true})});
+  assert.equal(outcome,'uncertain');
+  assert.equal(ledger.read(id,session)?.result,null);
+  assert.equal(ledger.claim('new',Date.now()+180000,30000),null);
+});
