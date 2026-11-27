@@ -150,3 +150,14 @@ Per i soli comandi `run-granted-local-spec` e `resume-granted-local-spec`, impos
 
 ### Workspace web locale protetto (candidato)
 In Motori AI, immettere UUID account e codice locale del gateway SQLite protetto (entrambi in memoria, da reinserire dopo reload). Il gateway conferma l'account e la modalità prima di un nuovo invio o recupero protetto; le richieste dichiarano esplicitamente la modalità richiesta. Le ricevute conservano il contesto di account/modalità ma mai il bearer. Riprendere esclusivamente con l'account originale, senza ripetere POST. Il percorso standard con campi vuoti e il pilota HTTPS nativo restano distinti. Il profilo protetto non abilita cloud, TLS/MFA o accesso remoto; il workspace è ancora locale per un operatore fidato e non isola le conversazioni locali tra utenti. UW1–3 da collaudare.
+
+
+## Collaudo esplicito del provider locale sul candidato SQLite protetto
+
+Con Node 24, checkout Git pulito e `llama-server` reale già avviato **solo su 127.0.0.1:8080**, con modello locale e alias noto, eseguire:
+
+```bash
+node scripts/local-acceptance.mjs --confirm-local-runtime --model qwen2.5-0.5b-instruct
+```
+
+Confermare personalmente che il runtime sia reale, locale e senza inoltro cloud; il comando non scarica modelli, non avvia il runtime né usa chiavi cloud. La porta 8787 deve essere libera: non fermare automaticamente altri servizi. Il runner usa un archivio temporaneo, credenziali effimere, migrazione SQLite, inferenza non cached con pin esplicito, verifica del catalogo sintetico, riapertura del gateway, recupero idempotente e revoca. Rapporto JSON redatto con SHA e stadio di errore, exit nonzero su qualsiasi mancata verifica. Non inviare stdout del modello. Un esito positivo è evidenza del percorso verso il runtime dichiarato dall'operatore, non attestazione indipendente del binario/hardware, né benchmark, cloud, telefono fisico o RV-01. `npm run test:unit` collauda soltanto la logica del runner (LA1–LA3), senza contattare modelli. Il cloud rimane disabilitato nel gateway SQLite.
