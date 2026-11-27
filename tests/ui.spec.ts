@@ -103,8 +103,9 @@ test('UW3 protected web receipt resumes with re-entered credentials, without ano
  await page.route('http://127.0.0.1:8787/**',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname;
   if(req.method()==='OPTIONS')return route.fulfill({status:204,headers});
-  expect(req.headers()['authorization']).toBe('Bearer '+code);
-  expect(req.headers()['x-forgia-require-auth']).toBe('1');
+  const requestHeaders=await req.allHeaders();
+  expect(requestHeaders['authorization']).toBe('Bearer '+code);
+  expect(requestHeaders['x-forgia-require-auth']).toBe('1');
   if(path==='/providers')return route.fulfill({headers,json:{durableAuthorizationRequired:true,durableSession:account,providers:[{id:'local',model:'test',configured:true}]}});
   if(path==='/jobs' && req.method()==='POST'){
    posts++;expect(req.postDataJSON().session).toBe(account);expect(req.postDataJSON().cloudConsent).toBe(false);

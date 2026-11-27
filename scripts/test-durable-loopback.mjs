@@ -48,6 +48,9 @@ try{
  await writeFile(join(dir,'jobs.v1.json'),'[]',{mode:0o600});
  await start({FORGIA_SQLITE_INITIALIZE:'1'});
  const providers=await (await request('/providers')).json();
+ assert.equal((await request('/providers',{headers:{'X-Forgia-Require-Auth':'1'}})).status,403);
+ assert.equal((await request('/jobs',{method:'POST',headers:{'X-Forgia-Require-Auth':'1','Content-Type':'application/json'},body:JSON.stringify({session,idea:'must not run',provider:'local'})})).status,403);
+ assert.equal(calls,0);
  assert.equal(providers.providers.find(p=>p.id==='local').configured,true);
  assert.ok(providers.providers.filter(p=>p.id!=='local'&&p.id!=='llamacpp').every(p=>!p.configured));
  assert.equal((await request('/providers',{headers:{origin:'https://untrusted.invalid'}})).status,403);
@@ -138,14 +141,17 @@ try{
  const accountPath=join(authDir,'sqlite-loopback','accounts.json');
  await writeFile(accountPath,JSON.stringify([account(session,token),account(other,foreign)]),{mode:0o600});
  const guarded={...authEnv,FORGIA_SQLITE_LOCAL_AUTH:'1'};
- const authRequest=(path,credential,options={})=>request(path,{...options,headers:{...options.headers,Authorization:'Bearer '+credential}});
+ const authRequest=(path,credential,options={})=>request(path,{...options,headers:{...options.headers,Authorization:'Bearer '+credential,'X-Forgia-Require-Auth':'1'}});
  const authPost=(payload,credential=token)=>authRequest('/jobs',credential,{method:'POST',headers:{'content-type':'application/json','idempotency-key':'p1:p2'},body:JSON.stringify(payload)});
  const authLookup=(credential=token,s=session)=>authRequest('/jobs/receipt',credential,{headers:{'X-Forgia-Session':s,'Idempotency-Key':'p1:p2'}});
  await start(guarded);
  assert.equal((await request('/providers')).status,401);
  assert.equal((await authRequest('/providers','c'.repeat(64))).status,401);
  const capabilities=await (await authRequest('/providers',token)).json();
- assert.equal(capabilities.durableAuthorizationRequired,true);assert.equal(capabilities.localDevelopmentOnly,true);
+ assert.equal(capabilities.durableAuthorizationRequired,true);assert.equal(capabilities.localDevelopmentOnly,true);assert.equal(capabilities.durableSession,session);
+ assert.equal((await (await authRequest('/providers',foreign)).json()).durableSession,other);
+ const preflight=await request('/providers',{method:'OPTIONS',headers:{origin:'http://127.0.0.1:8081','Access-Control-Request-Headers':'authorization,x-forgia-require-auth'}});
+ assert.equal(preflight.status,204);assert.match(preflight.headers.get('access-control-allow-headers'),/X-Forgia-Require-Auth/i);
  assert.equal((await authPost({...body,session:other})).status,403);
  const beforeAuth=calls;
  const secured=await authPost({...body,provider:'local',expectedModel:'fixture-local'});
@@ -187,5 +193,5 @@ try{
  await stop();
  child=spawn(process.execPath,['--experimental-strip-types','server/main.ts'],{cwd:root,env:{...env,...authEnv},stdio:'ignore'});
  const [downgrade]=await once(child,'exit');assert.notEqual(downgrade,0);child=undefined;
- console.log('D3/BSH11/A3/BSH12 PASS: HTTP, routing, Superhandy CLI, local adapter fixture, SQLite persistence, restart, legacy and authorization guards.');
+ console.log('D3/BSH11/A3/BSH12/UW4 PASS: HTTP, routing, Superhandy CLI, local adapter fixture, SQLite persistence, restart, legacy and authorization guards.');
 }finally{await stop();if(fake.listening){fake.closeAllConnections();await new Promise(r=>fake.close(r));}await rm(dir,{recursive:true,force:true});}
