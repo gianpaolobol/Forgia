@@ -9,18 +9,21 @@ export function durableInputPayload(value:unknown):string {
  const {expectedModel,authorizationGrant,...legacy}=value as Record<string,unknown>;
  const canonical=inputPayload(legacy);
  const input=JSON.parse(canonical) as DurableInput;
+ const cloud=input.provider==='openrouter'&&input.consent===true;
+ if(cloud&&Object.hasOwn(value,'expectedModel')!==Object.hasOwn(value,'authorizationGrant'))throw Error('Pin e grant cloud obbligatori insieme.');
  if(Object.hasOwn(value,'expectedModel')){
-  if(!localProvider(input.provider)||input.consent!==false)throw Error('Pin modello solo per provider locale esplicito.');
+  if(!cloud&&(!localProvider(input.provider)||input.consent!==false))throw Error('Pin modello solo per provider esplicito autorizzato.');
   validateModel(input.provider,expectedModel);
   input.expectedModel=expectedModel as string;
  }
  if(Object.hasOwn(value,'authorizationGrant')){
-  if(typeof authorizationGrant!=='string'||!/^[a-f0-9]{64}$/.test(authorizationGrant)||input.consent!==false)throw Error('Grant durevole non valido.');
+  if(typeof authorizationGrant!=='string'||!/^[a-f0-9]{64}$/.test(authorizationGrant)||(!cloud&&input.consent!==false))throw Error('Grant durevole non valido.');
   input.authorizationGrant=authorizationGrant;
  }
  return JSON.stringify(input);
 }
-export function durableModelAllowed(input:DurableInput,modelFor?:(provider:string)=>string|undefined):boolean {
+export function durableModelAllowed(input:DurableInput,modelFor?:(provider:string)=>string|undefined,cloudAllowed=false):boolean {
+ if(input.provider==='openrouter')return cloudAllowed&&input.consent===true&&typeof input.authorizationGrant==='string'&&/^[a-f0-9]{64}$/.test(input.authorizationGrant)&&typeof input.expectedModel==='string'&&input.expectedModel.endsWith(':free')&&modelFor?.(input.provider)===input.expectedModel;
  if(!['auto','local','llamacpp'].includes(input.provider))return false;
  if(input.expectedModel===undefined)return true;
  return localProvider(input.provider)&&modelFor?.(input.provider)===input.expectedModel;

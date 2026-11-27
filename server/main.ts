@@ -15,6 +15,7 @@ import {existsSync} from 'node:fs';
 import {prepareCloudState} from './cloudState.ts';
 import {knownRoutingStatus} from './routingFailure.ts';
 import {prepareDurableLocalAuth} from './durableLocalAuth.ts';
+import {explicitCloudPolicy,cloudSessionAllowed} from './explicitCloudPolicy.ts';
 const configs = resolveModelRegistry([
  {id: 'local', prefix: 'OLLAMA', model: process.env.OLLAMA_MODEL ?? ''},
  {id: 'llamacpp', prefix: 'LLAMACPP', model: process.env.LLAMACPP_MODEL ?? ''},
@@ -39,17 +40,24 @@ if (sqliteCloudState && (!sqliteLocal || sqliteInitialize)) throw Error('Quota/c
 if (!sqliteCloudState && existsSync(resolve(sqliteDirectory,'cloud.sqlite'))) throw Error('Archivio quota/cache presente: mantenere opt-in o ripristinare offline.');
 const localLedger = sqliteLocal ? prepareLocalLedger(sqliteDirectory,await storage.getItem('jobs.v1') ?? '[]',sqliteInitialize) : undefined;
 const durableAuth = sqliteLocal ? prepareDurableLocalAuth(sqliteDirectory,sqliteAuth) : undefined;
-// Cloud providers remain disabled in SQLite local mode. This prepares the
-// persistent state without enabling any external inference or pilot access.
+// Cloud providers remain disabled by default. State initialization alone never enables inference.
 const cloudState = sqliteCloudState ? prepareCloudState(sqliteDirectory,sqliteCloudInitialize,
   sqliteCloudInitialize ? await storage.getItem('gateway.v1') : null) : undefined;
 const gateway = createGateway(storage,{...cloudState,localCooldownLedger:localLedger});
 function configuredProvider(config: typeof configs[number]) {
  return createProvider({...config, fit: parseFit(config.fitRaw ?? process.env[config.prefix + '_FIT'])});
 }
+const cloudConfig=configs.find(c=>c.id==='openrouter');
+const cloudPolicy=explicitCloudPolicy(process.env.FORGIA_SQLITE_OPENROUTER_SESSION,{
+ protectedLedger:!!durableAuth&&!!cloudState&&!sqliteCloudInitialize&&!sqliteInitialize,
+ model:cloudConfig?.model,
+ hasKey:!!cloudConfig?.apiKey?.trim(),
+});
+if(cloudPolicy){if(!cloudConfig)throw Error('OpenRouter non configurato.');configuredProvider(cloudConfig);}
 async function executePlan({idea, provider, consent, context, expectedModel}: import('./durableWorker.ts').DurableInput, backlog: number, session: string, isolated: boolean, signal?: AbortSignal) {
   const scope = isolated ? session : undefined;
-  const available = sqliteLocal ? configs.filter(c => localProvider(c.id)) : configs;
+  const explicitCloud=sqliteLocal&&provider==='openrouter'&&cloudPolicy!==undefined&&scope?.startsWith(cloudPolicy.session+':')===true&&consent===true&&expectedModel===cloudPolicy.model;
+  const available = sqliteLocal ? configs.filter(c => localProvider(c.id)||(explicitCloud&&c.id==='openrouter')) : configs;
   if (provider === 'auto') {
    const providers = available.flatMap(config => {
     try { return [configuredProvider(config)]; } catch { return []; }
@@ -60,7 +68,7 @@ async function executePlan({idea, provider, consent, context, expectedModel}: im
   if (!config) throw Error('Motore non configurato.');
   const selected = configuredProvider(config);
   if(expectedModel!==undefined&&selected.model!==expectedModel)throw Error('Modello locale non corrispondente al pin.');
-  const result = await gateway.plan(idea, selected, sqliteLocal ? false : consent, scope, signal);
+  const result = await gateway.plan(idea, selected, sqliteLocal ? explicitCloud : consent, scope, signal);
   return {...result, routing: {provider: selected.id, model: selected.model, reason: 'Selezione manuale.', skipped: []}};
 }
 function buildJobs(store: typeof storage, isolated: boolean, authorize?: JobAuthorization) {
@@ -69,8 +77,9 @@ function buildJobs(store: typeof storage, isolated: boolean, authorize?: JobAuth
 const durableJobs = localLedger ? createDurableLocalJobs(
  localLedger,
  (input,backlog,session,signal)=>executePlan(input,backlog,input.authorizationGrant?`${session}:${input.authorizationGrant}`:session,true,signal),
- (id)=>{const config=configs.find(c=>c.id===id&&localProvider(c.id));try{return config?configuredProvider(config).model:undefined;}catch{return undefined;}},
+ (id)=>{const config=configs.find(c=>c.id===id&&(localProvider(c.id)||(cloudPolicy&&id==='openrouter')));try{return config?configuredProvider(config).model:undefined;}catch{return undefined;}},
  durableAuth?.active,
+ cloudPolicy,
 ) : undefined;
 const localJobs = durableJobs ?? buildJobs(storage, false);
 const allowed = new Set(['http://localhost:8081', 'http://127.0.0.1:8081']);
@@ -95,7 +104,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, jobs: typeof lo
      return {id: config.id, model: config.model, profile: config.profile, configured: false};
     }
    });
-   res.end(JSON.stringify({mode:'free-only',providers,localDevelopmentOnly:jobs===localJobs,durableLocal:jobs===durableJobs,durableModelPin:jobs===durableJobs,durableAuthorizationRequired:jobs===durableJobs&&sqliteAuth,...(jobs===durableJobs&&sqliteAuth ? {durableSession:session} : {})}));return;
+   res.end(JSON.stringify({mode:'free-only',providers,localDevelopmentOnly:jobs===localJobs,durableLocal:jobs===durableJobs,durableModelPin:jobs===durableJobs,durableAuthorizationRequired:jobs===durableJobs&&sqliteAuth,...(jobs===durableJobs&&cloudSessionAllowed(cloudPolicy,session)?{durableCloudExplicit:{provider:'openrouter',model:cloudPolicy!.model}}:{}),...(jobs===durableJobs&&sqliteAuth ? {durableSession:session} : {})}));return;
   }
   if (req.method === 'GET' && req.url === '/jobs/receipt') {
    if (!durableJobs || jobs !== durableJobs) return reply(res,404,{error:'Recupero ricevuta non disponibile.'});

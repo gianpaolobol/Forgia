@@ -6,6 +6,7 @@ import {durableInputPayload,durableModelAllowed} from './durableInput.ts';
 import {runOneDurableJob, type DurableInput} from './durableWorker.ts';
 import {routingContext} from './routing.ts';
 import type {JobAuthorization} from './jobAuthorization.ts';
+import {type ExplicitCloudPolicy, cloudSessionAllowed} from './explicitCloudPolicy.ts';
 
 type Ledger = ReturnType<typeof openJobLedger>;
 const sessionPattern = /^[a-f0-9-]{36}$/i;
@@ -31,7 +32,9 @@ export function prepareLocalLedger(directory: string, snapshot: string, initiali
   catch (error) { ledger.close(); throw error; }
 }
 
-export function createDurableLocalJobs(ledger: Ledger, run: (input: DurableInput, backlog: number, session: string, signal: AbortSignal) => Promise<unknown>, modelFor?: (provider:string)=>string|undefined, authorize?: JobAuthorization) {
+export function createDurableLocalJobs(ledger: Ledger, run: (input: DurableInput, backlog: number, session: string, signal: AbortSignal) => Promise<unknown>, modelFor?: (provider:string)=>string|undefined, authorize?: JobAuthorization, cloudPolicy?: ExplicitCloudPolicy) {
+  if(cloudPolicy&&!authorize)throw Error('Cloud esplicito richiede autorizzazioni persistenti.');
+  const cloudAllowed=(session:string)=>cloudSessionAllowed(cloudPolicy,session);
   const worker = randomUUID();
   async function grantAllowed(session:string,grant:string|undefined) {
     if(!authorize)return grant===undefined;
@@ -51,8 +54,8 @@ export function createDurableLocalJobs(ledger: Ledger, run: (input: DurableInput
     try {
       const outcome = await runOneDurableJob(ledger,{
         worker,
-        authorize: async (session,input) => durableModelAllowed(input,modelFor)&&await grantAllowed(session,input.authorizationGrant),
-        run: (input,session,signal) => run({...input,consent:false},ledger.queuedCount(),session,signal),
+        authorize: async (session,input) => durableModelAllowed(input,modelFor,cloudAllowed(session))&&await grantAllowed(session,input.authorizationGrant),
+        run: (input,session,signal) => run({...input,consent:input.provider==='openrouter'&&input.consent===true},ledger.queuedCount(),session,signal),
       });
       if (running) timer=setTimeout(tick,outcome==='idle'?500:0);
     } catch {
@@ -68,11 +71,12 @@ export function createDurableLocalJobs(ledger: Ledger, run: (input: DurableInput
       if (!running) throw Object.assign(Error('Coda non disponibile.'),{status:503});
       const {session,provider,idea}=body;
       if (typeof session!=='string' || !sessionPattern.test(session)) throw Error('Sessione di lavoro non valida.');
-      if (typeof provider!=='string' || !['auto','local','llamacpp'].includes(provider)) throw Error('In modalità SQLite pilota sono ammessi solo motori locali.');
+      if (typeof provider!=='string' || (!['auto','local','llamacpp'].includes(provider)&&!(provider==='openrouter'&&cloudAllowed(session)))) throw Error('Motore non autorizzato in modalità SQLite.');
+      if(provider==='openrouter'&&(body.cloudConsent!==true||body.expectedModel!==cloudPolicy?.model||grant===undefined))throw Error('Cloud esplicito richiede consenso, modello fissato e grant.');
       if (requestKey!==undefined && (typeof requestKey!=='string' || !requestKey || requestKey.length>1000)) throw Error('Chiave richiesta non valida.');
       if(!await grantAllowed(session,grant))throw Object.assign(Error('Autorizzazione locale non valida.'),{status:403});
-      const payload=durableInputPayload({idea:typeof idea==='string'?idea.trim():idea,provider,consent:false,context:routingContext(body.kind,body.phase),...(Object.hasOwn(body,'expectedModel')?{expectedModel:body.expectedModel}:{}),...(grant!==undefined?{authorizationGrant:grant}:{})});
-      if (!durableModelAllowed(JSON.parse(payload),modelFor)) throw Object.assign(Error('Modello locale non corrispondente al pin.'),{status:409});
+      const payload=durableInputPayload({idea:typeof idea==='string'?idea.trim():idea,provider,consent:provider==='openrouter'&&body.cloudConsent===true,context:routingContext(body.kind,body.phase),...(Object.hasOwn(body,'expectedModel')?{expectedModel:body.expectedModel}:{}),...(grant!==undefined?{authorizationGrant:grant}:{})});
+      if (!durableModelAllowed(JSON.parse(payload),modelFor,cloudAllowed(session))) throw Object.assign(Error('Modello locale non corrispondente al pin.'),{status:409});
       return {id:ledger.enqueue(session,requestKey??null,payload)};
     },
     async findReceipt(session:unknown,key:unknown,grant?:string) {
