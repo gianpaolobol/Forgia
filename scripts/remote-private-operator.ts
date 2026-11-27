@@ -1,4 +1,4 @@
-import {openRemoteLocalDb} from '../server/remoteLocalRuntime.ts';
+import {openRemotePrivateControl} from '../server/remoteLocalRuntime.ts';
 import {RemoteNodeStatus} from '../server/remoteNodeStatus.ts';
 import {listenPrivateOperator} from '../server/remotePrivateOperator.ts';
 
@@ -13,7 +13,7 @@ async function main(){
   const stop=new AbortController();
   const abort=()=>stop.abort();
   process.once('SIGINT',abort);process.once('SIGTERM',abort);
-  const db=openRemoteLocalDb(state,'control');
+  const db=openRemotePrivateControl(state);
   try{
     const server=await listenPrivateOperator(new RemoteNodeStatus(db),{port,host,login});
     try{
