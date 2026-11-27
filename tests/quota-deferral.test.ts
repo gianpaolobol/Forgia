@@ -24,13 +24,17 @@ test('S2 persisted deferral, exclusive deadline and authorization recheck after 
   t.after(()=>{db.close();rmSync(dir,{recursive:true,force:true});});
   let now=100000,calls=0,checks=0;
   const id=db.enqueue(session,'same',payload);
-  const run=()=>runOneDurableJob(db,{worker:'w',now:()=>now,authorize:async()=>{checks++;return checks===1;},run:async()=>{calls++;throw new QuotaDeferral(now+120000);}});
+  const run=()=>runOneDurableJob(db,{worker:'w',now:()=>now,authorize:async()=>{checks++;return now<220000;},run:async()=>{calls++;throw new QuotaDeferral(now+120000);}});
   assert.equal(await run(),'deferred');assert.equal(db.deferredUntil(id),220000);
+  // The initial grant stays valid through the post-dispatch check; revoke
+  // only at the persisted eligibility deadline, not by callback count.
+  assert.ok(checks>=2);assert.equal(calls,1);
+  const checksBeforeReopen=checks;
   db.close();db=openJobLedger(path);
   const other=openJobLedger(path);
   try {assert.equal(other.claim('other',219999,30000),null);assert.equal(other.enqueue(session,'same',payload),id);} finally{other.close();}
-  now=219999;assert.equal(await run(),'idle');
-  now=220000;assert.equal(await run(),'failed');assert.equal(calls,1);assert.equal(checks,2);
+  now=219999;assert.equal(await run(),'idle');assert.equal(checks,checksBeforeReopen);
+  now=220000;assert.equal(await run(),'failed');assert.equal(calls,1);assert.equal(checks,checksBeforeReopen+1);
   assert.equal(JSON.parse(db.read(id,session)!.result!).statusCode,403);
 });
 test('S3 bounded retries and ambiguous errors cannot replay',async t=>{
