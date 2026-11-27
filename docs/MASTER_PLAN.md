@@ -308,3 +308,6 @@ Main f8e64a98, backup iteration-30 3550c197 (141 commit avanti, 0 indietro rispe
 
 ### F09 RC31–RC33 — avvio Windows opt-in
 Candidato: generatore offline Task Scheduler con account interattivo, privilegi minimi, azione run-os fissa, nessun segreto, nessun restart, percorso esplicito e separazione directory. Importazione esclusivamente locale e volontaria dopo prova DPAPI/ACL. Gate: test RC31–RC33, importazione e logon/logoff reali, arresto e revoca, prova fisica iPhone e review RV-01. Nessuna installazione o esposizione implicita. F14 #61 rimane separata.
+
+## 2026-11-27 — F09/F10 RC34–RC36 vista operatore locale
+Base #52 42dd1f9c, CI 45925262454 success; #61 c1b88fc CI 45901387059 success separata. Main f8e64a98, backup iteration-30 antenato (144 avanti/0 indietro sul base), issue #51 assegnazione 7208530613, RV-01 assente. Vista responsiva solo loopback/stesso origin, risorse statiche senza dati, grant operator temporaneo non persistito in header, GET status scoped, errore distinto da offline. Test HTTP e VM RC34–RC36 predisposti, non ancora eseguiti. Nessun comando, esposizione, costo o credenziale reale. Pairing privato TLS/MFA/ACL, Windows reale, mobile nativo, provider cloud free e review restano gate.

@@ -1,5 +1,6 @@
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http';
 import type {RemoteNodeStatus} from './remoteNodeStatus.ts';
+import {remoteStatusPage,remoteStatusCss,remoteStatusScript} from './remoteStatusPage.ts';
 
 // Separate loopback-only status transport. No gateway proxy, commands,
 // enrollment or administrative routes. Private TLS/MFA proxy is future work.
@@ -53,6 +54,14 @@ export async function listenRemoteStatus(store: Pick<RemoteNodeStatus,'status'|'
         req.headers['sec-fetch-site'] === 'cross-site' ||
         req.headers['sec-fetch-site'] === 'same-site') {
       reply(res,403,{error:'forbidden'}); return;
+    }
+    if(req.method==='GET' && (req.url==='/operator'||req.url==='/operator.css'||req.url==='/operator.js')){
+      if(req.headers['transfer-encoding']!==undefined||(req.headers['content-length']!==undefined&&req.headers['content-length']!=='0')){
+        reply(res,400,{error:'invalid_request'});return;
+      }
+      const [type,body]=req.url==='/operator'?['text/html',remoteStatusPage]:req.url==='/operator.css'?['text/css',remoteStatusCss]:['text/javascript',remoteStatusScript];
+      res.writeHead(200,{'Content-Type':type+'; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Connection':'close','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"});
+      res.end(body);return;
     }
     const status = req.method === 'GET' && req.url === '/v1/status';
     const beat = req.method === 'POST' && req.url === '/v1/heartbeat';

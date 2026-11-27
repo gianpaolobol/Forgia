@@ -2,6 +2,7 @@ import {test, type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {createConnection} from 'node:net';
+import {runInNewContext} from 'node:vm';
 import {readRemoteNodeStatus} from '../src/core/remoteStatusClient.ts';
 import {DatabaseSync} from 'node:sqlite';
 import {RemoteNodeStatus} from '../server/remoteNodeStatus.ts';
@@ -147,4 +148,46 @@ test('RC12 real HTTP redirect does not make a second request',async t => {
   assert.ok(addr && typeof addr !== 'string');
   await assert.rejects(readRemoteNodeStatus(addr.port,'a'.repeat(64)),/unavailable/);
   assert.equal(calls,1);
+});
+
+test('RC34 local operator resources carry no node data, are guarded and not cached',async t=>{
+ const f=await fixture(t);
+ for(const path of ['/operator','/operator.css','/operator.js']){
+  const response=await fetch(f.base+path);
+  assert.equal(response.status,200);
+  assert.equal(response.headers.get('cache-control'),'no-store');
+  assert.equal(response.headers.get('access-control-allow-origin'),null);
+  assert.match(response.headers.get('content-security-policy')??'',/frame-ancestors 'none'/);
+  assert.match(response.headers.get('content-security-policy')??'',/form-action 'none'/);
+  const body=await response.text();assert.ok(!body.includes(f.operator.token));assert.ok(!body.includes('pc-a'));
+  assert.equal((await fetch(f.base+path,{headers:{Origin:'https://other.invalid'}})).status,403);
+ }
+ assert.equal((await fetch(f.base+'/operator?grant=x')).status,404);
+ assert.equal((await fetch(f.base+'/operator',{method:'POST'})).status,404);
+ assert.equal((await fetch(f.base+'/v1/status')).status,401);
+});
+test('RC35 operator script uses real loopback and distinguishes revocation from offline',async t=>{
+ const f=await fixture(t);
+ const script=await (await fetch(f.base+'/operator.js')).text();
+ const listeners=new Map<string,()=>unknown>();
+ const input={value:''}, result={textContent:''}, button={disabled:false,addEventListener:(n:string,fn:()=>unknown)=>listeners.set(n,fn)};
+ let calls=0;
+ runInNewContext(script,{document:{getElementById:(id:string)=>({grant:input,read:button,result}[id as 'grant'|'read'|'result'])},addEventListener:(n:string,fn:()=>unknown)=>listeners.set(n,fn),AbortController,setTimeout,clearTimeout,fetch:(path:string,init:RequestInit)=>{
+  calls++;assert.equal(path,'/v1/status');assert.equal(input.value,'');assert.equal(init.credentials,'omit');assert.equal(init.cache,'no-store');assert.equal(init.redirect,'error');return fetch(f.base+path,init);
+ }});
+ const click=async(grant:string)=>{input.value=grant;await listeners.get('click')!();assert.equal(input.value,'');assert.equal(button.disabled,false);};
+ await click('invalid');assert.equal(calls,0);
+ await click(f.operator.token);assert.match(result.textContent,/pc-a: offline/);
+ assert.equal((await f.heartbeat(f.node.token,1)).status,200);
+ await click(f.operator.token);assert.match(result.textContent,/pc-a: online/);
+ f.store.revoke(f.operator.id);await click(f.operator.token);assert.match(result.textContent,/Stato non disponibile/);assert.ok(!result.textContent.includes('offline'));
+ await click(f.node.token);assert.match(result.textContent,/Stato non disponibile/);
+ listeners.get('pagehide')!();assert.equal(result.textContent,'Nessuna verifica effettuata.');
+});
+test('RC36 malformed result is rejected without rendering markup',async t=>{
+ const f=await fixture(t);const script=await (await fetch(f.base+'/operator.js')).text();
+ let click:()=>unknown=()=>{};
+ const input={value:f.operator.token},result={textContent:''},button={disabled:false,addEventListener:(_n:string,fn:()=>unknown)=>{click=fn;}};
+ runInNewContext(script,{document:{getElementById:(id:string)=>({grant:input,read:button,result}[id as 'grant'|'read'|'result'])},addEventListener:()=>{},AbortController,setTimeout,clearTimeout,fetch:async()=>new Response(JSON.stringify({node:'<img src=x>',online:true,lastSeenAt:1}),{headers:{'Content-Type':'application/json; charset=utf-8'}})});
+ input.value=f.operator.token;await click();assert.equal(input.value,'');assert.match(result.textContent,/Stato non disponibile/);assert.ok(!result.textContent.includes('<img'));
 });
