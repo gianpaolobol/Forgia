@@ -322,3 +322,7 @@ Base #52 4f075955, CI 45936832768 completata success: Android (npm ci, check e n
 
 ## 2026-11-27 — F09 RC46–RC50 coda diagnostica locale (checkpoint isolato)
 Base #52 24d90f04, run 45942770381 primo tentativo: check e npm test passati (RC41–45 inclusi), iOS e web success, Android assembleRelease fallito in risoluzione plugin Foojay 1.0.0; retry del solo job fallito richiesto, esito non ancora verificato. #61 c1b88fc CI 45901387059 success separata, main f8e64a98, backup iteration-30 3550c197. RV-01 assente. Coda SQLite diagnostica solo locale: snapshot senza payload, scope singolo grant operatore e grant nodo corrente, idempotenza, 32 ricevute per grant/256 globali, scadenza e pulizia, completamento di una ricevuta insieme a heartbeat autorizzato, nessuna azione esterna e nessun replay. CLI via pipe privata per richiesta e lettura; nessuna route aggiunta o proxy attivato. Cinque regressioni predisposte, non ancora dichiarate PASS. Gate: esecuzione test, CI, trasporto MFA/TLS/ACL effettivo, installazioni e provider reali, RV-01; nessuna spesa o modifica workflow.
+
+
+### RC51–RC54 — F09/F10 verticale diagnostico privato (candidato)
+Estende RC46–50 con POST diagnostico senza payload, origine HTTPS/same-origin e chiave idempotente, GET ricevuta scoped e UI esplicita senza credenziali persistenti. Quattro regressioni HTTP predisposte; CI cumulativa, pairing/TLS/MFA/ACL fisici, provider cloud free e RV-01 ancora gate. F14 #61 separata; nessuna esposizione gateway o spesa.

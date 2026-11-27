@@ -88,9 +88,67 @@ test('RC44 live revocation, expiry and duplicate bearer fail closed',async()=>{
   }finally{await f.close();}
 });
 test('RC45 rejects unsafe configuration before binding',async()=>{
-  const store={status:()=>({node:'pc',online:false,lastSeenAt:null})};
+  const store={status:()=>({node:'pc',online:false,lastSeenAt:null}),requestSnapshot:()=>{throw Error('unused');},readSnapshot:()=>{throw Error('unused');}};
   for(const config of [
     {host:'127.0.0.1',login,port:0},{host:'workstation.example.ts.net.evil.invalid',login,port:0},
     {host,login:'*',port:0},{host,login,port:8787},{host,login,port:-1},
   ])await assert.rejects(listenPrivateOperator(store,config),/Invalid private operator configuration/);
+});
+
+const snapshotKey='snapshot_private_0001';
+const postHeaders=['Origin','https://'+host,'Sec-Fetch-Site','same-origin','Idempotency-Key',snapshotKey,'Content-Length','0'];
+test('RC51 private diagnostic receipt is idempotent and completed by authorized heartbeat',async()=>{
+ const f=await fixture();
+ try{
+   const headers=[...f.auth(f.op.token),...postHeaders];
+   const first=await get(f.server,'/v1/snapshots',headers,'POST');
+   assert.equal(first.status,202);assert.equal(first.cache,'no-store');
+   const id=JSON.parse(first.body).id;
+   assert.deepEqual(await get(f.server,'/v1/snapshots',headers,'POST'),first);
+   const path='/v1/snapshots/'+id;
+   assert.equal(JSON.parse((await get(f.server,path,f.auth(f.op.token))).body).state,'queued');
+   f.advance(2000);f.store.heartbeat(f.node.token,2);
+   const receipt=await get(f.server,path,f.auth(f.op.token));
+   assert.equal(receipt.status,200);assert.deepEqual(JSON.parse(receipt.body),{id,node:'pc',state:'done',createdAt:1000,completedAt:2000,sequence:2});
+ }finally{await f.close();}
+});
+test('RC52 diagnostic submission requires origin, fetch site, idempotency and empty body',async()=>{
+ const f=await fixture();
+ try{
+   const auth=f.auth(f.op.token);
+   for(const extra of [[],postHeaders.slice(2),postHeaders.slice(0,2),[...postHeaders,'Idempotency-Key',snapshotKey],['Origin','https://'+host,'Sec-Fetch-Site','same-origin','Idempotency-Key','bad'],['Origin','https://'+host,'Sec-Fetch-Site','same-origin','Idempotency-Key',snapshotKey,'Content-Length','1'],['Origin','https://'+host,'Sec-Fetch-Site','same-origin','Idempotency-Key',snapshotKey,'Transfer-Encoding','chunked']]){
+     const r=await get(f.server,'/v1/snapshots',[...auth,...extra],'POST');
+     assert.equal(r.status,400);
+   }
+   assert.equal((await get(f.server,'/v1/snapshots',[...auth,'Origin','https://evil.invalid','Sec-Fetch-Site','same-origin','Idempotency-Key',snapshotKey],'POST')).status,403);
+   assert.equal((await get(f.server,'/v1/snapshots',auth)).status,404);
+   assert.equal((await get(f.server,'/v1/snapshots?payload=x',[...auth,...postHeaders],'POST')).status,400);
+ }finally{await f.close();}
+});
+test('RC53 diagnostic receipt rejects other grants and live revocation',async()=>{
+ const f=await fixture();
+ try{
+   const first=await get(f.server,'/v1/snapshots',[...f.auth(f.op.token),...postHeaders],'POST');
+   assert.equal(first.status,202);
+   const path='/v1/snapshots/'+JSON.parse(first.body).id;
+   const second=f.store.issue('pc','operator',5000);
+   for(const token of [second.token,f.other.token,f.node.token]){
+     assert.equal((await get(f.server,path,f.auth(token))).status,401);
+   }
+   assert.equal((await get(f.server,'/v1/snapshots',[...f.auth(f.node.token),...postHeaders],'POST')).status,401);
+   f.store.revoke(f.op.id);
+   assert.equal((await get(f.server,path,f.auth(f.op.token))).status,401);
+   assert.equal((await get(f.server,'/v1/snapshots',[...f.auth(f.op.token),...postHeaders],'POST')).status,401);
+ }finally{await f.close();}
+});
+test('RC54 private UI exposes diagnostic controls without embedding credentials or enabling gateway',async()=>{
+ const f=await fixture();
+ try{
+   const page=await get(f.server,'/operator',standard),script=await get(f.server,'/operator.js',standard);
+   assert.equal(page.status,200);assert.match(page.body,/snapshot-send/);assert.match(page.body,/snapshot-read/);
+   assert.equal(script.status,200);assert.match(script.body,/Idempotency-Key/);assert.match(script.body,/redirect:'error'/);
+   assert.ok(!page.body.includes(f.op.token)&&!script.body.includes(f.op.token));
+   assert.doesNotMatch(script.body,/localStorage|sessionStorage/);
+   assert.equal((await get(f.server,'/v1/jobs',[...f.auth(f.op.token),...postHeaders],'POST')).status,400);
+ }finally{await f.close();}
 });
