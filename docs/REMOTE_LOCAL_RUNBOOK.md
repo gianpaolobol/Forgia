@@ -41,8 +41,11 @@ Dopo provisioning DPAPI e import del grant **node** già emesso, usare `node --e
 Il generatore offline non registra alcun task. Da PowerShell locale non elevato, con Node 24, checkout fidato, ACL e provisioning DPAPI già verificati, ricavare il SID del proprio account con `[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value`. Esempio con percorsi fittizi da sostituire:
 
 ```powershell
+$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $plan = & 'C:\Program Files\nodejs\node.exe' --experimental-strip-types scripts/remote-windows-logon-plan.ts $sid 'C:\Program Files\nodejs\node.exe' 'C:\Forgia' 'D:\Private\state' 8791 'D:\Private\vault' 'D:\Private\key'
 if ($LASTEXITCODE -ne 0) { throw 'Piano rifiutato' }
 $plan | Set-Content -Encoding UTF8 -LiteralPath 'D:\Private\Forgia-logon.xml'
 ```
 Prima dell'importazione controllare SID, percorsi reali (nessuna junction, alias, rete, directory condivisa o scrivibile da altri), XML e Node 24. Il SID e i percorsi non sono segreti ma il file resta privato, fuori repo. Usare Utilità di pianificazione > Importa attività, nome Forgia-Local-Heartbeat, verificare solo account corrente, esegui solo con utente connesso, privilegi minimi, nessuna password, nessuna ripetizione; non sovrascrivere attività esistenti. Attivare soltanto dopo prova foreground e consenso locale; non usare SYSTEM. Alla disconnessione/riavvio il servizio può non essere disponibile, il grant scade entro 24 ore e non si rinnova automaticamente. Il task non prova ACL, identità o file reali; nessuna registrazione, installazione o prova Task Scheduler eseguita qui. Per rollback arrestare e disabilitare/eliminare il task specifico, poi revocare il grant e conservare DB e chiavi. Non esporre porte. RC31–RC33 testano la generazione deterministica e i rifiuti, non l'importazione Windows. Pairing/TLS/MFA e iPhone restano aperti.
+
+Autocontrollo su cce7f571: RC31–RC33 3/3 PASS su Node 22.16.0 Linux, CLI valida XML ben formato con parser Python e rifiuta SID SYSTEM (exit 1, stdout vuoto); non è validazione schema/import Windows.
