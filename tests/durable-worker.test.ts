@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {setTimeout as delay} from 'node:timers/promises';
 import {openJobLedger} from '../server/jobLedger.ts';
 import {runOneDurableJob} from '../server/durableWorker.ts';
+import {QuotaDeferral} from '../server/quotaDeferral.ts';
 
 const session = '00000000-0000-0000-0000-000000000001';
 const payload = JSON.stringify({idea:'Test',provider:'local',consent:false,context:{kind:'catalog',phase:'draft'}});
@@ -18,13 +19,15 @@ function fixture(t: {after: (fn: () => void) => void}) {
 
 test('W1 dispatch marker precedes execution, scoped result survives reopen',async t => {
   const {ledger,path} = fixture(t), id = ledger.enqueue(session,'k',payload);
+  let checks = 0;
   const outcome = await runOneDurableJob(ledger,{worker:'w',authorize:async (s,input) => {
-    assert.equal(s,session); assert.equal(input.consent,false); assert.equal(ledger.read(id,session)?.status,'claimed'); return true;
+    assert.equal(s,session); assert.equal(input.consent,false); assert.equal(ledger.read(id,session)?.status,++checks===1?'claimed':'dispatched'); return true;
   },run:async (input,s,signal) => {
     assert.equal(input.idea,'Test'); assert.equal(s,session); assert.equal(signal.aborted,false);
     assert.equal(ledger.read(id,session)?.status,'dispatched'); return {answer:1};
   }});
   assert.equal(outcome,'done');
+  assert.ok(checks>=2);
   const reopened = openJobLedger(path);
   try { assert.deepEqual(JSON.parse(reopened.read(id,session)!.result!),{answer:1}); assert.equal(reopened.read(id,'other'),null); }
   finally {reopened.close();}
@@ -105,4 +108,40 @@ test('W9 lease loss after dispatch aborts runner and cannot write a late result'
     time = 130; assert.equal(other.recoverExpired(time).uncertain,1);
   })}),'lease-lost');
   assert.equal(aborted,true); assert.equal(ledger.read(id,session)?.status,'uncertain'); assert.equal(ledger.read(id,session)?.result,null);
+});
+
+test('W10 live revocation aborts a dispatched job without publishing or replay',async t => {
+  const {ledger}=fixture(t), id=ledger.enqueue(session,'live',payload);
+  let valid=true, aborted=false;
+  const outcome=await runOneDurableJob(ledger,{worker:'w',ttl:90,maxRunMs:2000,authorize:async()=>valid,run:async(_input,_session,signal)=>new Promise(resolve=>{
+    signal.addEventListener('abort',()=>{aborted=true; resolve({late:true});},{once:true});
+    valid=false;
+  })});
+  assert.equal(outcome,'uncertain');
+  assert.equal(aborted,true);
+  assert.equal(ledger.read(id,session)?.result,null);
+  assert.equal(ledger.enqueue(session,'live',payload),id);
+  assert.equal(ledger.claim('new',Date.now(),30000),null);
+});
+
+test('W11 final authorization rejects a result revoked before the first poll',async t => {
+  const {ledger}=fixture(t), id=ledger.enqueue(session,null,payload);
+  let valid=true;
+  assert.equal(await runOneDurableJob(ledger,{worker:'w',authorize:async()=>valid,run:async()=>{valid=false;return {privateResult:true};}}),'uncertain');
+  assert.equal(ledger.read(id,session)?.result,null);
+});
+
+test('W12 a quota refusal cannot schedule a retry after authorization is revoked',async t => {
+  const {ledger}=fixture(t), id=ledger.enqueue(session,null,payload);
+  let valid=true;
+  assert.equal(await runOneDurableJob(ledger,{worker:'w',authorize:async()=>valid,run:async()=>{valid=false;throw new QuotaDeferral(Date.now()+120000);}}),'uncertain');
+  assert.equal(ledger.deferredUntil(id),undefined);
+  assert.equal(ledger.claim('new',Date.now()+180000,30000),null);
+});
+
+test('W13 an unavailable final authorization cannot publish a result',async t => {
+  const {ledger}=fixture(t), id=ledger.enqueue(session,null,payload);
+  let dispatched=false;
+  assert.equal(await runOneDurableJob(ledger,{worker:'w',ttl:90,authorize:async()=>{if(dispatched)throw Error('private');return true;},run:async()=>{dispatched=true;return {secret:'private'};}}),'uncertain');
+  assert.equal(ledger.read(id,session)?.result,null);
 });

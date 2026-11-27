@@ -15,7 +15,9 @@ type Options = {
 type Outcome = 'idle' | 'failed' | 'done' | 'uncertain' | 'lease-lost' | 'deferred';
 
 // Explicit one-shot worker, not an HTTP listener or automatic migration.
-// Authorization is a fresh check at dispatch, not a guarantee of in-flight revocation.
+// Authorization is checked before dispatch, periodically while dispatched and
+// again before publishing a result or deferring quota. An upstream effect may
+// already have happened; a denial after dispatch is uncertain, never replayed.
 // The caller must enforce provider policy/quotas and honour cancellation in run().
 export async function runOneDurableJob(ledger: Ledger, options: Options): Promise<Outcome> {
   const ttl = options.ttl ?? 30000, maxRunMs = options.maxRunMs ?? 120000;
@@ -28,13 +30,16 @@ export async function runOneDurableJob(ledger: Ledger, options: Options): Promis
   let input: DurableInput;
   try { input = JSON.parse(durableInputPayload(JSON.parse(row.payload))); }
   catch { return fail('Richiesta in coda non valida.',400); }
+  async function authorize(timeoutMs: number): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const expired = new Promise<never>((_,reject) => { timer = setTimeout(() => reject(Error('Autorizzazione scaduta.')),timeoutMs); });
+      return await Promise.race([Promise.resolve().then(() => options.authorize(row.session,input)),expired]);
+    } finally { clearTimeout(timer); }
+  }
   let authorized: boolean;
-  let authTimer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const expired = new Promise<never>((_,reject) => { authTimer = setTimeout(() => reject(Error('Autorizzazione scaduta.')),ttl); });
-    authorized = await Promise.race([Promise.resolve().then(() => options.authorize(row.session,input)),expired]);
-  } catch { return fail('Autorizzazione non verificabile.',503); }
-  finally { clearTimeout(authTimer); }
+  try { authorized = await authorize(ttl); }
+  catch { return fail('Autorizzazione non verificabile.',503); }
   if (authorized !== true) return fail('Autorizzazione non più valida.',403);
   // A stale claimant must never execute, including after a slow authorization check.
   if (!ledger.markDispatched(lease,now())) return 'lease-lost';
@@ -45,6 +50,35 @@ export async function runOneDurableJob(ledger: Ledger, options: Options): Promis
   }, Math.floor(ttl/3));
   const deadline = setTimeout(() => controller.abort(),maxRunMs);
   const stopped = new Promise<never>((_,reject) => controller.signal.addEventListener('abort',() => reject(Error('Worker interrotto.')),{once:true}));
+  let authPoll: ReturnType<typeof setTimeout> | undefined;
+  let pendingCheck: Promise<void> | undefined;
+  let closing = false;
+  const checkLive = async () => {
+    try {
+      if (await authorize(Math.min(ttl,1000)) === true) return;
+    } catch { /* fail closed, never forward authorization errors */ }
+    controller.abort();
+  };
+  function scheduleCheck() {
+    if (closing || controller.signal.aborted) return;
+    authPoll = setTimeout(() => {
+      pendingCheck = checkLive().finally(() => {
+        pendingCheck = undefined;
+        scheduleCheck();
+      });
+    },Math.min(250,Math.floor(ttl/3)));
+  }
+  async function verifyBeforeCommit() {
+    // Stop polls and wait for the existing check; then start a fresh check
+    // that cannot predate the completed operation. Do not commit on lease loss.
+    closing = true;
+    clearTimeout(authPoll);
+    if (pendingCheck) await Promise.race([pendingCheck,stopped]);
+    if (controller.signal.aborted) throw Error('Worker interrotto.');
+    await Promise.race([checkLive(),stopped]);
+    if (controller.signal.aborted) throw Error('Worker interrotto.');
+  }
+  scheduleCheck();
   try {
     let result: string;
     try {
@@ -52,10 +86,13 @@ export async function runOneDurableJob(ledger: Ledger, options: Options): Promis
       if (controller.signal.aborted) throw Error('Worker interrotto.');
       result = JSON.stringify(value);
       if (typeof result !== 'string' || Buffer.byteLength(result) > 4 * 1024 * 1024) throw Error('Risultato non valido.');
+      await verifyBeforeCommit();
     } catch (error) {
       // Only the trusted explicit refusal type permits a bounded replay.
       // Cancellation/transport failure may hide an effect and stays uncertain.
       if (!controller.signal.aborted && error instanceof QuotaDeferral) {
+        try { await verifyBeforeCommit(); }
+        catch { return ledger.markUncertain(lease,now()) ? 'uncertain' : 'lease-lost'; }
         const at = now();
         const outcome = ledger.deferQuota(lease,at,Math.max(error.nextEligibleAt,retryDeadline(null,at)));
         return outcome === 'exhausted' ? 'failed' : outcome;
@@ -64,6 +101,8 @@ export async function runOneDurableJob(ledger: Ledger, options: Options): Promis
     }
     return ledger.finish(lease,now(),'done',result) ? 'done' : 'lease-lost';
   } finally {
+    closing = true;
+    clearTimeout(authPoll);
     clearInterval(heartbeat);
     clearTimeout(deadline);
   }
