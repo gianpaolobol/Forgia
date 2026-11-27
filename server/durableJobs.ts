@@ -54,7 +54,7 @@ export function createDurableLocalJobs(ledger: Ledger, run: (input: DurableInput
     try {
       const outcome = await runOneDurableJob(ledger,{
         worker,
-        authorize: async (session,input) => durableModelAllowed(input,modelFor,cloudAllowed(session))&&await grantAllowed(session,input.authorizationGrant),
+        authorize: async (session,input) => (input.provider!=='openrouter'||input.expectedModel===cloudPolicy?.model)&&durableModelAllowed(input,modelFor,cloudAllowed(session))&&await grantAllowed(session,input.authorizationGrant),
         run: (input,session,signal) => run({...input,consent:input.provider==='openrouter'&&input.consent===true},ledger.queuedCount(),session,signal),
       });
       if (running) timer=setTimeout(tick,outcome==='idle'?500:0);

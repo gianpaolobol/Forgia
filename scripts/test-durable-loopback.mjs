@@ -193,5 +193,20 @@ try{
  await stop();
  child=spawn(process.execPath,['--experimental-strip-types','server/main.ts'],{cwd:root,env:{...env,...authEnv},stdio:'ignore'});
  const [downgrade]=await once(child,'exit');assert.notEqual(downgrade,0);child=undefined;
+ // EC3: opt-in and session-scoped API capability on the real HTTP process.
+ // No cloud job submitted and no real key or provider network request.
+ await writeFile(accountPath,JSON.stringify([account(session,token),account(other,foreign)]),{mode:0o600});
+ const cloudEnv={...guarded,FORGIA_SQLITE_CLOUD_STATE:'1'};
+ await start({...cloudEnv,FORGIA_SQLITE_CLOUD_INITIALIZE:'1'});await stop();
+ await start({...cloudEnv,FORGIA_SQLITE_OPENROUTER_SESSION:session,OPENROUTER_MODEL:'fixture/model:free',OPENROUTER_API_KEY:'synthetic'});
+ const ownCloud=await (await authRequest('/providers',token)).json();
+ assert.deepEqual(ownCloud.durableCloudExplicit,{provider:'openrouter',model:'fixture/model:free'});
+ assert.equal(ownCloud.providers.find(p=>p.id==='openrouter').configured,false);
+ assert.equal((await (await authRequest('/providers',foreign)).json()).durableCloudExplicit,undefined);
+ assert.equal((await request('/providers')).status,401);
+ await stop();await start(cloudEnv);
+ assert.equal((await (await authRequest('/providers',token)).json()).durableCloudExplicit,undefined);
+ assert.equal(calls,beforeAuth+2);
+ console.log('EC3 PASS: protected HTTP cloud capability scoped to explicit session; no cloud request.');
  console.log('D3/BSH11/A3/BSH12/UW4 PASS: HTTP, routing, Superhandy CLI, local adapter fixture, SQLite persistence, restart, legacy and authorization guards.');
 }finally{await stop();if(fake.listening){fake.closeAllConnections();await new Promise(r=>fake.close(r));}await rm(dir,{recursive:true,force:true});}
