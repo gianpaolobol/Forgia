@@ -416,3 +416,7 @@ Candidato #52 eb5f8b1, CI 46090576320 verde invariata. Quattro ZIP scaricati tra
 
 ## 2026-11-28 — F13 firma APK v2, verifica crittografica mirata
 #52 eb5f8b1, CI 46090576320 success; #61 c1b88fc separata, CI 45901387059 success, nessuna review su entrambe. Riscaricato APK ARM64 15241157446, SHA-256 corrispondente. Firma RSA-2048 SHA-256 del signed data v2 e digest dei 25 chunk protetti verificati con cryptography, chiave pubblica coerente con certificato Android Debug; 3 mutazioni respinte (payload, central directory, firma). Non firma distribuzione né verifica completa apksigner, SDK non disponibile. [Evidenza](evidence/2026-11-28-apk-v2-signature.md). Main e candidato invariati; nessun costo, nuova CI o merge. Gate fisici, provider reali, verifica SDK e RV-01 aperti.
+
+
+## 2026-11-28 — indice delta RV-01 per candidato congelato (F00, non approvato)
+Consultare [matrice unica dei 13 rilievi e R01–R11](evidence/2026-11-28-rv01-delta.md), con baseline #52 `eb5f8b1f02fdbe50a9a56b11073b34b724a1b74c`, CI 46090576320 e criteri residui; riferimento al verdetto #7 CHANGES_REQUESTED. È un allegato di pre-review, non il piano consolidato approvato. Restano necessari inventario completo SHA delle PR, consolidamento F00–F13, prove quantitative, review dello stesso RV-01, collaudi effettivi e decisione finale. F14/issue #46 rimane separata (#61), non blocca i gate originari. Nessuna nuova build o modifica applicativa senza difetto osservato.
