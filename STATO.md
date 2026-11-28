@@ -12,7 +12,7 @@ in sviluppo
 non pubblicata
 
 ## Prossimi passi
-1. Eseguire npm ci, check e test completi su Node 24; ripetere DF1–DF7 (già 7/7 su Node22) e collaudare MP3–MP5 HTTP sul candidato cumulativo.
+1. Eseguire npm ci, check e test completi su Node 24; ripetere DF1–DF7 (già 7/7 su Node22) e collaudare MP3–MP5 e B9 HTTP sul candidato cumulativo.
 2. Collaudare provider AI locale e cloud gratuito, recupero, controllo remoto e installazioni fisiche.
 3. Chiudere RV-01 (Issue #7) e verificare CI del nuovo candidato prima di ogni merge.
 4. Notification Hub #61 separato: consegna reale opt-in e integrazione solo dopo review e CI.
@@ -34,3 +34,5 @@ Segue la versione **1.1.0** (`LINEE_GUIDA.md`).
 - 2026-11-28 [Codex] Delta F05/R03: guard cache post-risposta, caratterizzazione V8 4/4 con dipendenze sintetiche; suite integrata ancora aperta.
 
 - 2026-11-28 [Codex] DF1–DF7 eseguiti due volte, 7/7 su Node22 e SQLite reali; provider sintetici. Evidenza docs/evidence/2026-11-28-df-integrated.md. Node24/HTTP/CI/review ancora aperti.
+
+- 2026-11-28 [Codex] B1–B8 8/8 su SQLite reale e Node22: marker di cutover quota/cache impedisce downgrade/reinizializzazione dopo perdita isolata del DB. B9 HTTP predisposto, non eseguito.

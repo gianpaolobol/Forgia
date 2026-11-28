@@ -12,7 +12,7 @@ import {createJobs} from './jobs.ts';
 import type {JobAuthorization} from './jobAuthorization.ts';
 import {createDurableLocalJobs, prepareLocalLedger} from './durableJobs.ts';
 import {existsSync} from 'node:fs';
-import {prepareCloudState} from './cloudState.ts';
+import {prepareCloudState,assertCloudStateMode} from './cloudState.ts';
 import {knownRoutingStatus} from './routingFailure.ts';
 import {prepareDurableLocalAuth} from './durableLocalAuth.ts';
 import {explicitCloudPolicy,cloudSessionAllowed} from './explicitCloudPolicy.ts';
@@ -37,7 +37,7 @@ const sqliteCloudState = process.env.FORGIA_SQLITE_CLOUD_STATE === '1';
 const sqliteCloudInitialize = process.env.FORGIA_SQLITE_CLOUD_INITIALIZE === '1';
 if (sqliteCloudInitialize && !sqliteCloudState) throw Error('Inizializzazione quota/cache richiede opt-in.');
 if (sqliteCloudState && (!sqliteLocal || sqliteInitialize)) throw Error('Quota/cache richiede coda SQLite già migrata, senza inizializzazione concorrente.');
-if (!sqliteCloudState && existsSync(resolve(sqliteDirectory,'cloud.sqlite'))) throw Error('Archivio quota/cache presente: mantenere opt-in o ripristinare offline.');
+assertCloudStateMode(sqliteDirectory,sqliteCloudState);
 const localLedger = sqliteLocal ? prepareLocalLedger(sqliteDirectory,await storage.getItem('jobs.v1') ?? '[]',sqliteInitialize) : undefined;
 const durableAuth = sqliteLocal ? prepareDurableLocalAuth(sqliteDirectory,sqliteAuth) : undefined;
 // Cloud providers remain disabled by default. State initialization alone never enables inference.

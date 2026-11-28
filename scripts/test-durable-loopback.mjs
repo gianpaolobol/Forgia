@@ -139,6 +139,27 @@ try{
  // Omitting the state opt-in after bootstrap must fail closed.
  child=spawn(process.execPath,['--experimental-strip-types','server/main.ts'],{cwd:root,env,stdio:'ignore'});
  const [missingOptIn]=await once(child,'exit');assert.notEqual(missingOptIn,0);child=undefined;
+ // B9: losing the quota database alone must not permit legacy downgrade or
+ // stale snapshot reinitialization. Move only this temporary fixture offline.
+ const cloudPath=join(dir,'sqlite-loopback','cloud.sqlite');
+ const refuseCutover=async(extra={})=>{
+  child=spawn(process.execPath,['--experimental-strip-types','server/main.ts'],{cwd:root,env:{...env,...extra},stdio:'ignore'});
+  const exited=once(child,'exit');let timedOut=false;
+  const timer=setTimeout(()=>{timedOut=true;child.kill();},6000);
+  try{const [code,signal]=await exited;assert.equal(timedOut,false);assert.equal(signal,null);assert.notEqual(code,0);}
+  finally{clearTimeout(timer);child=undefined;}
+ };
+ await rename(cloudPath,cloudPath+'.backup');
+ try{
+  await refuseCutover();
+  await refuseCutover({FORGIA_SQLITE_CLOUD_STATE:'1',FORGIA_SQLITE_CLOUD_INITIALIZE:'1'});
+  await assert.rejects(readFile(cloudPath),{code:'ENOENT'});
+ }finally{await rename(cloudPath+'.backup',cloudPath);}
+ await start({FORGIA_SQLITE_CLOUD_STATE:'1'});
+ assert.deepEqual(await (await request('/jobs/'+suspended.id)).json(),pending);
+ assert.equal(calls,afterBridge+1);
+ await stop();
+ console.log('B9 PASS: missing quota database cannot downgrade/reinitialize, restored durable receipt unchanged.');
  // A normal legacy launch must refuse an existing cutover directory.
  child=spawn(process.execPath,['--experimental-strip-types','server/main.ts'],{cwd:root,env:{...env,FORGIA_SQLITE_LOCAL:'0'},stdio:'ignore'});
  const [code]=await once(child,'exit');assert.notEqual(code,0);child=undefined;
