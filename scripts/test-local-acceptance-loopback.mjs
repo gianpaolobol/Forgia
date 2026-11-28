@@ -15,9 +15,9 @@ const fake=createServer(async(req,res)=>{
  try{
   let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>100000){res.writeHead(413);res.end('{}');return;}}
   const body=JSON.parse(raw);
-  if(body.model!==model||body.stream!==false||req.headers.authorization!==undefined||
+  if(body.model!==model||(body.stream!==undefined&&body.stream!==false)||req.headers.authorization!==undefined||
      !body.messages?.some(m=>m.role==='user'&&m.content.includes('Catalogo prova Forgia'))||
-     body.response_format?.type!=='json_object'){unexpected++;res.writeHead(400);res.end('{}');return;}
+     body.response_format?.type!=='json_object'||body.response_format?.schema?.type!=='object'){unexpected++;res.writeHead(400);res.end('{}');return;}
   res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{content:invalid?'not-json':JSON.stringify(spec)}}]}));
  }catch{unexpected++;res.writeHead(400);res.end('{}');}
 });
@@ -25,7 +25,7 @@ const args=['--confirm-local-runtime','--model',model];
 try{
  await new Promise((resolve,reject)=>{fake.once('error',reject);fake.listen(8080,'127.0.0.1',resolve);});
  const success=await run(args);
- assert.equal(success.pass,true,JSON.stringify(success));
+ assert.equal(success.pass,true,JSON.stringify({...success,fixtureCalls:calls,fixtureRejected:unexpected}));
  assert.deepEqual(success.checks,{runtimeAliasAdvertised:true,protectedLocalOnly:true,uncachedPinnedCatalog:true,sameReceiptAfterRestart:true,revocation:true,checkoutUnchanged:true});
  assert.equal(success.dispatchMayHaveOccurred,true);
  assert.equal(success.reconciliationRequired,false);
@@ -34,7 +34,8 @@ try{
  invalid=true;
  const failure=await run(args);
  assert.equal(failure.pass,false,JSON.stringify(failure));
- assert.equal(failure.failedStage,'inference');assert.equal(failure.dispatchMayHaveOccurred,true);
+ assert.equal(failure.failedStage,'inference');
+ assert.equal(failure.inferenceCheckpoint,'job-state');assert.equal(failure.dispatchMayHaveOccurred,true);
  assert.equal(failure.checks.uncachedPinnedCatalog,undefined);
  assert.equal(calls,2);assert.equal(unexpected,0);
  console.log('LA5 PASS: invalid synthetic model response rejected, no retry or false success.');

@@ -62,7 +62,7 @@ async function runAcceptance(args,cloud){
   }
   child=undefined;
  };
- let pass=false,dispatchMayHaveOccurred=false;
+ let pass=false,dispatchMayHaveOccurred=false,inferenceCheckpoint;
  try{
   model=cloud?parseCloudArgs(args):parseArgs(args);
   const provider=cloud?'openrouter':'llamacpp';
@@ -136,8 +136,10 @@ async function runAcceptance(args,cloud){
   if(cloud)assert.equal(new Date(Date.now()+120000).toISOString().slice(0,10),day);
   // Mark before sending: a lost response must not imply that no inference occurred.
   dispatchMayHaveOccurred=true;
+  inferenceCheckpoint='post-response';
   const first=await post();
   assert.equal(first.status,202);
+  inferenceCheckpoint='receipt-id';
   const id=first.data?.id;
   assert.match(id,/^[a-f0-9-]{36}$/);
   const read=()=>request('/jobs/'+id);
@@ -145,15 +147,18 @@ async function runAcceptance(args,cloud){
   let job;
   const deadline=Date.now()+65000;
   while(Date.now()<deadline){
+   inferenceCheckpoint='poll-response';
    const current=await read();
    assert.equal(current.status,200);
+   inferenceCheckpoint='job-state';
    if(current.data.status==='done'){job=current.data;break;}
    assert.ok(['queued','running'].includes(current.data.status));
    assert.ok(!(current.data.nextEligibleAt>Date.now()));
    await delay(300);
   }
+  inferenceCheckpoint='result-contract';
   assert.ok(acceptsResult(job,model,provider));
-  if(cloud)assert.equal(job.result.requestsUsed,20);
+  if(cloud){inferenceCheckpoint='quota-contract';assert.equal(job.result.requestsUsed,20);}
   checks.uncachedPinnedCatalog=true;
   stage='restart-receipt';
   assert.deepEqual((await receipt()).data,{id});
@@ -200,7 +205,7 @@ async function runAcceptance(args,cloud){
   try{await stop();if(dir)await rm(dir,{recursive:true,force:true});}
   catch{pass=false;stage='cleanup';}
  }
- return {pass,sha,model,node:process.versions.node,elapsedMs:Date.now()-started,scope:cloud?'operator-confirmed-openrouter-free-protected-sqlite':'operator-confirmed-loopback-llamacpp-protected-sqlite',dispatchMayHaveOccurred,reconciliationRequired:cloud&&dispatchMayHaveOccurred,checks,...(!pass?{failedStage:stage}:{})};
+ return {pass,sha,model,node:process.versions.node,elapsedMs:Date.now()-started,scope:cloud?'operator-confirmed-openrouter-free-protected-sqlite':'operator-confirmed-loopback-llamacpp-protected-sqlite',dispatchMayHaveOccurred,reconciliationRequired:cloud&&dispatchMayHaveOccurred,checks,...(!pass?{failedStage:stage,...(stage==='inference'&&inferenceCheckpoint?{inferenceCheckpoint}:{})}:{})};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
  const result=await run(process.argv.slice(2));

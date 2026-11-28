@@ -16,7 +16,7 @@ test('LA2 acceptance rejects cached, wrong model/provider, invalid or unrelated 
 });
 test('LA3 unconfirmed invocation fails before network and returns redacted stage',async()=>{
  const r=await run([]);
- assert.equal(r.pass,false);assert.equal(r.failedStage,'preflight');assert.deepEqual(r.checks,{});assert.equal(r.dispatchMayHaveOccurred,false);
+ assert.equal(r.pass,false);assert.equal(r.failedStage,'preflight');assert.deepEqual(r.checks,{});assert.equal(r.dispatchMayHaveOccurred,false);assert.equal(r.inferenceCheckpoint,undefined);
 });
 
 
@@ -34,5 +34,5 @@ test('CA2 cloud acceptance requires real uncached pinned provider result',()=>{
 });
 test('CA3 no consent fails before any credential or network access',async()=>{
  const result=await runCloud([]);
- assert.equal(result.pass,false);assert.equal(result.failedStage,'preflight');assert.deepEqual(result.checks,{});assert.equal(result.model,undefined);assert.equal(result.dispatchMayHaveOccurred,false);assert.equal(result.reconciliationRequired,false);
+ assert.equal(result.pass,false);assert.equal(result.failedStage,'preflight');assert.deepEqual(result.checks,{});assert.equal(result.model,undefined);assert.equal(result.dispatchMayHaveOccurred,false);assert.equal(result.reconciliationRequired,false);assert.equal(result.inferenceCheckpoint,undefined);
 });
