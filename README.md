@@ -26,6 +26,18 @@ Per il gateway locale: configurare soltanto le variabili necessarie dell'esempio
 
 Il gateway ascolta solo `127.0.0.1:8787` e accetta il client web locale sulle origini previste. **Non esporlo su Internet o tramite tunnel.** Nessuna autenticazione multiutente, vault o sandbox remota è stata consegnata. Nel pannello ospitato il gateway locale non è utilizzabile; il generatore offline resta disponibile. I progetti sono conservati nel browser/dispositivo, non sincronizzati nel cloud. Esportare per conservarne una copia; cancellare dati del browser o disinstallare elimina i dati locali.
 
+## [Codex] Worker locale Builda
+
+Avvia [Builda](https://github.com/gianpaolobol/Builda) sullo stesso computer con `python -m builda serve --port 8766`. Avvia il gateway Forgia con `BUILDA_LOOPBACK_PORT=8766` nel file `.env` lato server. La route si attiva solo se la porta è configurata.
+
+```sh
+curl --fail http://127.0.0.1:8787/builda/v1/experiments \
+  -H 'Content-Type: application/json' \
+  -d '{"problem":"calibration","engineVersion":"0.1.0","datasetVersion":"synthetic-v1","seed":42,"budget":64}'
+```
+
+Il worker verifica problema, seed, budget, strategia e versioni. Per `terrain` con Builda 0.1.0 il dataset è `synthetic-building-tiles-v1`. La risposta contiene identificativi, hash, metriche e decisione dell'esperimento. Il medesimo job restituisce una ricevuta persistente anche dopo un riavvio di Forgia. Per un esito incerto, consultare il registro SQLite di Builda prima di ritentare. Il worker usa un solo slot di esecuzione, un timeout di 30 secondi e serve client locali senza `Origin`. Il percorso è collaudato senza provider AI su un host di sviluppo.
+
 ## Stato delle verifiche
 Leggere `docs/VERIFICHE_2026-11-11.md`. Bundle JS/Hermes per iOS e Android non sono IPA/AAB firmati. Non attestano installazione fisica, TestFlight, Play Store o comportamento nativo. I test browser automatici sono predisposti ma il lancio locale è bloccato dal sandbox; è stato eseguito un collaudo manuale attraverso il browser disponibile.
 

@@ -20,3 +20,7 @@ Non chiamare beta un'anteprima o un bundle JS. Tenere distinte prove automatiche
 Questo è un progetto mobile Expo con pannello web statico. Preservare la struttura nativa e il motore indipendente dal provider.
 Il servizio server è locale di sviluppo, non pubblicabile come backend multiutente. Non esporlo con un tunnel.
 L'accesso ospitato è privato: non cambiarne la visibilità senza richiesta. Non incorporare dati o credenziali degli altri cinque progetti.
+
+## [Codex] Worker Builda — 2026-11-28
+
+La route sperimentale `POST /builda/v1/experiments` si attiva con `BUILDA_LOOPBACK_PORT`. La destinazione è fissata a IPv4 loopback. Conservare il registro locale dei job quando si riavvia Forgia. Un job senza ricevuta richiede riconciliazione con il ledger Builda prima di un reinvio.

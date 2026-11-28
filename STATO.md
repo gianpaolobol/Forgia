@@ -18,7 +18,7 @@ non pubblicata
 - Nessuno noto
 
 ## Componenti condivisi
-- Usa da altri repository: —
+- Usa da altri repository: API locale Builda v1 per lavori sperimentali facoltativi sullo stesso host.
 - Offre agli altri: Gateway AI gratuito multi-fornitore (`server/providers.ts`, `server/gateway.ts`)
 
 ## Linee guida
@@ -26,3 +26,4 @@ Segue la versione **1.1.0** (`LINEE_GUIDA.md`).
 
 ## Registro aggiornamenti
 - 2026-11-26 [Claude] Prima compilazione dai contenuti del repository; le voci "da confermare" vanno verificate.
+- 2026-11-28 [Codex] Worker Builda collaudato in locale, con ricevuta persistente e deduplicazione dopo il riavvio.
