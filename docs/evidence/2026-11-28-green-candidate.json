@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "date": "2026-11-28",
+  "candidateSha": "eb5f8b1f02fdbe50a9a56b11073b34b724a1b74c",
+  "workflowRun": 46090576320,
+  "workflowUrl": "https://github.com/gianpaolobol/Forgia/actions/runs/46090576320",
+  "ci": {
+    "android": "success",
+    "web": "success",
+    "iosSimulator": "success",
+    "typescript": {
+      "pass": 341,
+      "fail": 0,
+      "skippedWindows": 3
+    },
+    "windowsRunnerParser": {
+      "pass": 1
+    },
+    "localCloudRunnerUnit": {
+      "pass": 6
+    },
+    "browser": {
+      "pass": 7
+    },
+    "syntheticIntegration": [
+      "BSH10",
+      "G7",
+      "EC3",
+      "D3",
+      "BSH11",
+      "A3",
+      "BSH12",
+      "UW4",
+      "LA4",
+      "LA5"
+    ]
+  },
+  "artifacts": [
+    {
+      "name": "Forgia-ios-unsigned-xcarchive",
+      "id": 15241746386,
+      "bytes": 25188723,
+      "digest": "sha256:864c9ec175e743075c7cda1c92d572b34f18f1937c89e67027639515e370c0b7",
+      "expiresAt": "2027-02-26T00:56:47Z",
+      "downloadUrl": "https://github.com/gianpaolobol/Forgia/actions/runs/46090576320/artifacts/15241746386"
+    },
+    {
+      "name": "Forgia-android-unsigned-aab",
+      "id": 15241631841,
+      "bytes": 49456052,
+      "digest": "sha256:015249cee7113d327966c263f777675cce2a6bfa9690f7309d6271efc07ccc04",
+      "expiresAt": "2027-02-26T00:56:47Z",
+      "downloadUrl": "https://github.com/gianpaolobol/Forgia/actions/runs/46090576320/artifacts/15241631841"
+    },
+    {
+      "name": "Forgia-ios-simulator",
+      "id": 15241431174,
+      "bytes": 19025616,
+      "digest": "sha256:9979fdb3a544f34958b63d9bd80f2c0f9cf66e79e9d649f711192b82462b8fa1",
+      "expiresAt": "2027-02-26T00:56:47Z",
+      "downloadUrl": "https://github.com/gianpaolobol/Forgia/actions/runs/46090576320/artifacts/15241431174"
+    },
+    {
+      "name": "Forgia-android-arm64",
+      "id": 15241157446,
+      "bytes": 10374176,
+      "digest": "sha256:88d4a38474e0ebdcc91cac830a5b99a14ce50de5295870c2b9f587b578cc4532",
+      "expiresAt": "2027-02-26T00:56:47Z",
+      "downloadUrl": "https://github.com/gianpaolobol/Forgia/actions/runs/46090576320/artifacts/15241157446"
+    }
+  ],
+  "artifactEvidenceScope": "GitHub-reported metadata only; ZIP bytes not downloaded or independently hashed",
+  "pending": [
+    "real-local-provider-on-candidate",
+    "real-free-cloud-provider-with-reconciled-quota",
+    "windows-dpapi-physical",
+    "private-iphone-windows-control",
+    "physical-ios-install",
+    "physical-android-install",
+    "RV-01-independent-plan-and-result-review",
+    "remaining-master-plan-gates"
+  ],
+  "notificationHub": {
+    "pr": 61,
+    "sha": "c1b88fc61480ded855710bb0a68ac5c2da784f39",
+    "ciRun": 45901387059,
+    "independentReview": false,
+    "merged": false,
+    "externalDeliveryReal": false
+  }
+}
