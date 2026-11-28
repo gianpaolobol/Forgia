@@ -7,7 +7,7 @@ export type {DurableInput} from './durableInput.ts';
 type Options = {
   worker: string;
   authorize: (session: string, input: DurableInput) => Promise<boolean>;
-  run: (input: DurableInput, session: string, signal: AbortSignal) => Promise<unknown>;
+  run: (input: DurableInput, session: string, signal: AbortSignal, beforeDispatch: () => Promise<void>) => Promise<unknown>;
   ttl?: number;
   maxRunMs?: number;
   now?: () => number;
@@ -60,6 +60,18 @@ export async function runOneDurableJob(ledger: Ledger, options: Options): Promis
     } catch { /* fail closed, never forward authorization errors */ }
     controller.abort();
   };
+  // A poll can predate a quota reservation or a fallback decision. Recheck
+  // authorization and the SQLite fence at the last application-level boundary
+  // before each inference. This cannot make an external effect atomic with SQLite.
+  async function beforeDispatch() {
+    if (closing) throw Error('Worker in chiusura.');
+    controller.signal.throwIfAborted();
+    await Promise.race([checkLive(),stopped]);
+    controller.signal.throwIfAborted();
+    try { if (ledger.heartbeat(lease,now(),ttl)) return; } catch { /* fail closed */ }
+    controller.abort();
+    controller.signal.throwIfAborted();
+  }
   function scheduleCheck() {
     if (closing || controller.signal.aborted) return;
     authPoll = setTimeout(() => {
@@ -83,7 +95,7 @@ export async function runOneDurableJob(ledger: Ledger, options: Options): Promis
   try {
     let result: string;
     try {
-      const value = await Promise.race([Promise.resolve().then(() => options.run(input,session,controller.signal)), stopped]);
+      const value = await Promise.race([Promise.resolve().then(() => options.run(input,session,controller.signal,beforeDispatch)), stopped]);
       if (controller.signal.aborted) throw Error('Worker interrotto.');
       result = JSON.stringify(value);
       if (typeof result !== 'string' || Buffer.byteLength(result) > 4 * 1024 * 1024) throw Error('Risultato non valido.');

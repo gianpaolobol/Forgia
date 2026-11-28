@@ -32,7 +32,7 @@ export function prepareLocalLedger(directory: string, snapshot: string, initiali
   catch (error) { ledger.close(); throw error; }
 }
 
-export function createDurableLocalJobs(ledger: Ledger, run: (input: DurableInput, backlog: number, session: string, signal: AbortSignal) => Promise<unknown>, modelFor?: (provider:string)=>string|undefined, authorize?: JobAuthorization, cloudPolicy?: ExplicitCloudPolicy) {
+export function createDurableLocalJobs(ledger: Ledger, run: (input: DurableInput, backlog: number, session: string, signal: AbortSignal, beforeDispatch: () => Promise<void>) => Promise<unknown>, modelFor?: (provider:string)=>string|undefined, authorize?: JobAuthorization, cloudPolicy?: ExplicitCloudPolicy) {
   if(cloudPolicy&&!authorize)throw Error('Cloud esplicito richiede autorizzazioni persistenti.');
   const cloudAllowed=(session:string)=>cloudSessionAllowed(cloudPolicy,session);
   const worker = randomUUID();
@@ -55,7 +55,7 @@ export function createDurableLocalJobs(ledger: Ledger, run: (input: DurableInput
       const outcome = await runOneDurableJob(ledger,{
         worker,
         authorize: async (session,input) => (input.provider!=='openrouter'||input.expectedModel===cloudPolicy?.model)&&durableModelAllowed(input,modelFor,cloudAllowed(session))&&await grantAllowed(session,input.authorizationGrant),
-        run: (input,session,signal) => run({...input,consent:input.provider==='openrouter'&&input.consent===true},ledger.queuedCount(),session,signal),
+        run: (input,session,signal,beforeDispatch) => run({...input,consent:input.provider==='openrouter'&&input.consent===true},ledger.queuedCount(),session,signal,beforeDispatch),
       });
       if (running) timer=setTimeout(tick,outcome==='idle'?500:0);
     } catch {

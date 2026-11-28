@@ -51,7 +51,13 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache,l
  const cloudLimit = Math.min(dailyLimit ?? 20,20);
  // Opt-in only: every cloud caller must share the initialized ledger after an offline cutover.
  // The legacy JSON cloud cache/counters are not authoritative in this mode.
- async function attemptSqliteCloud(prompt:string, provider:Provider, signal:AbortSignal, reserve:number,scope?:string,onDispatch?:()=>void) {
+ async function guardDispatch(signal: AbortSignal, beforeDispatch: () => Promise<void>) {
+  // A guard error is not a provider refusal and must never authorize fallback/replay.
+  try { await beforeDispatch(); }
+  catch { throw Error('Invio non più autorizzato.'); }
+  signal.throwIfAborted();
+ }
+ async function attemptSqliteCloud(prompt:string, provider:Provider, signal:AbortSignal, reserve:number,scope?:string,onDispatch?:()=>void,beforeDispatch?:()=>Promise<void>) {
   const before = quotaLedger!.read(provider.id);
   if (before.cooldownUntil > Date.now() || before.used >= cloudLimit-reserve) {
    throw new QuotaDeferral(Math.max(before.cooldownUntil, before.used >= cloudLimit-reserve ? nextUtcDay() : retryDeadline(null)));
@@ -67,7 +73,10 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache,l
   if (!grant.granted) throw new QuotaDeferral(grant.reason==='cooldown'?grant.nextEligibleAt!:nextUtcDay());
   signal.throwIfAborted(); // Never refund a committed grant, even before dispatch.
   let output:string;
-  try { onDispatch?.(); output = await provider.complete(prompt,signal); }
+  try {
+   if (beforeDispatch) await guardDispatch(signal,beforeDispatch);
+   onDispatch?.(); output = await provider.complete(prompt,signal);
+  }
   catch (error) {
    if (error instanceof ProviderError && error.status===429) {
     quotaLedger!.cooldown(provider.id,Math.max(retryDeadline(null),error instanceof QuotaDeferral?error.nextEligibleAt:0));
@@ -81,14 +90,14 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache,l
   if (key) cloudCache!.write(key,spec);
   return {spec,cached:false,requestsUsed:grant.used};
  }
- async function attempt(prompt: string, provider: Provider, consent: boolean, state: State, signal: AbortSignal, scope?: string, reserve = 0, onDispatch?:()=>void) {
+ async function attempt(prompt: string, provider: Provider, consent: boolean, state: State, signal: AbortSignal, scope?: string, reserve = 0, onDispatch?:()=>void,beforeDispatch?:()=>Promise<void>) {
   signal.throwIfAborted();
   if (!providerIds.includes(provider.id) || !['local', 'free'].includes(provider.mode)) {
    throw Error('Fornitore non supportato in modalità gratuita.');
   }
   if (localProvider(provider.id) !== (provider.mode === 'local')) throw Error('Modalità gratuita incoerente.');
   if (provider.mode !== 'local' && !consent) throw Error('Serve il consenso all’invio al fornitore cloud selezionato.');
-  if (quotaLedger && provider.mode === 'free') return attemptSqliteCloud(prompt,provider,signal,reserve,scope,onDispatch);
+  if (quotaLedger && provider.mode === 'free') return attemptSqliteCloud(prompt,provider,signal,reserve,scope,onDispatch,beforeDispatch);
   const key = createHash('sha256').update(JSON.stringify(scope ? [scope, provider.id, provider.model, prompt] : [provider.id, provider.model, prompt])).digest('hex');
   const used = state.counts[provider.id] ?? 0;
   const cache = scope ? state.pilotCache : state.cache;
@@ -102,6 +111,7 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache,l
   signal.throwIfAborted(); // Revocation during durable quota reservation: no dispatch or refund.
   let output: string;
   try {
+   if (beforeDispatch) await guardDispatch(signal,beforeDispatch);
    onDispatch?.();
    output = await provider.complete(prompt, signal);
   } catch (error) {
@@ -122,12 +132,12 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache,l
   return {spec, cached: false, requestsUsed: state.counts[provider.id]};
  }
 
- function plan(idea: string, provider: Provider, consent: boolean, scope?: string, external?: AbortSignal) {
+ function plan(idea: string, provider: Provider, consent: boolean, scope?: string, external?: AbortSignal, beforeDispatch?:()=>Promise<void>) {
   return enqueue(async () => {
    try {
     external?.throwIfAborted();
     const signal = AbortSignal.any([AbortSignal.timeout(45000), ...(external ? [external] : [])]);
-    return await attempt(text(idea, 'Idea', 8000), provider, consent, await load(), signal, scope);
+    return await attempt(text(idea, 'Idea', 8000), provider, consent, await load(), signal, scope,0,undefined,beforeDispatch);
    } catch (error) {
     if (error instanceof DOMException && error.name === 'TimeoutError') {
      const failure = summarizeRoutingFailure([504]);
@@ -142,7 +152,7 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache,l
   });
  }
 
- function planAuto(idea: string, providers: readonly Provider[], consent: boolean, context: RoutingContext, backlog = -1, scope?: string, external?: AbortSignal) {
+ function planAuto(idea: string, providers: readonly Provider[], consent: boolean, context: RoutingContext, backlog = -1, scope?: string, external?: AbortSignal,beforeDispatch?:()=>Promise<void>) {
   return enqueue(async () => {
    external?.throwIfAborted();
    const deadline = AbortSignal.any([AbortSignal.timeout(90000), ...(external ? [external] : [])]);
@@ -183,7 +193,7 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache,l
     }
     let dispatched=false;
     try {
-     const result = await attempt(prompt, provider, consent, state, AbortSignal.any([deadline, AbortSignal.timeout(provider.mode === "local" ? 45000 : 14000)]), scope, reserve,()=>{dispatched=true;});
+     const result = await attempt(prompt, provider, consent, state, AbortSignal.any([deadline, AbortSignal.timeout(provider.mode === "local" ? 45000 : 14000)]), scope, reserve,()=>{dispatched=true;},beforeDispatch);
      return {...result, routing: {provider: provider.id, model: provider.model, reason, skipped}};
     } catch (error) {
      // In durable mode, an inference may already have happened. Only a trusted

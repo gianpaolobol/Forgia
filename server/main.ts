@@ -54,7 +54,7 @@ const cloudPolicy=explicitCloudPolicy(process.env.FORGIA_SQLITE_OPENROUTER_SESSI
  hasKey:!!cloudConfig?.apiKey?.trim(),
 });
 if(cloudPolicy){if(!cloudConfig)throw Error('OpenRouter non configurato.');configuredProvider(cloudConfig);}
-async function executePlan({idea, provider, consent, context, expectedModel}: import('./durableWorker.ts').DurableInput, backlog: number, session: string, isolated: boolean, signal?: AbortSignal) {
+async function executePlan({idea, provider, consent, context, expectedModel}: import('./durableWorker.ts').DurableInput, backlog: number, session: string, isolated: boolean, signal?: AbortSignal, beforeDispatch?: () => Promise<void>) {
   const scope = isolated ? session : undefined;
   const explicitCloud=sqliteLocal&&provider==='openrouter'&&cloudPolicy!==undefined&&scope?.startsWith(cloudPolicy.session+':')===true&&consent===true&&expectedModel===cloudPolicy.model;
   const available = sqliteLocal ? configs.filter(c => localProvider(c.id)||(explicitCloud&&c.id==='openrouter')) : configs;
@@ -62,13 +62,13 @@ async function executePlan({idea, provider, consent, context, expectedModel}: im
    const providers = available.flatMap(config => {
     try { return [configuredProvider(config)]; } catch { return []; }
    });
-   return gateway.planAuto(idea, providers, sqliteLocal ? false : consent, context, backlog, scope, signal);
+   return gateway.planAuto(idea, providers, sqliteLocal ? false : consent, context, backlog, scope, signal, beforeDispatch);
   }
   const config = available.find(c => c.id === provider);
   if (!config) throw Error('Motore non configurato.');
   const selected = configuredProvider(config);
   if(expectedModel!==undefined&&selected.model!==expectedModel)throw Error('Modello locale non corrispondente al pin.');
-  const result = await gateway.plan(idea, selected, sqliteLocal ? explicitCloud : consent, scope, signal);
+  const result = await gateway.plan(idea, selected, sqliteLocal ? explicitCloud : consent, scope, signal, beforeDispatch);
   return {...result, routing: {provider: selected.id, model: selected.model, reason: 'Selezione manuale.', skipped: []}};
 }
 function buildJobs(store: typeof storage, isolated: boolean, authorize?: JobAuthorization) {
@@ -76,7 +76,7 @@ function buildJobs(store: typeof storage, isolated: boolean, authorize?: JobAuth
 }
 const durableJobs = localLedger ? createDurableLocalJobs(
  localLedger,
- (input,backlog,session,signal)=>executePlan(input,backlog,input.authorizationGrant?`${session}:${input.authorizationGrant}`:session,true,signal),
+ (input,backlog,session,signal,beforeDispatch)=>executePlan(input,backlog,input.authorizationGrant?`${session}:${input.authorizationGrant}`:session,true,signal,beforeDispatch),
  (id)=>{const config=configs.find(c=>c.id===id&&(localProvider(c.id)||(cloudPolicy&&id==='openrouter')));try{return config?configuredProvider(config).model:undefined;}catch{return undefined;}},
  durableAuth?.active,
  cloudPolicy,
