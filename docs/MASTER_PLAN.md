@@ -412,3 +412,7 @@ Gate operativi (non sostituiscono F00–F14):
 
 ## 2026-11-28 — F13 verifica effettiva byte artefatti
 Candidato #52 eb5f8b1, CI 46090576320 verde invariata. Quattro ZIP scaricati tramite connettore GitHub: SHA256 esterno 4/4 conforme al digest API, SHA256 interno 4/4 conforme a SHA256SUMS.txt, CRC integri per entrambi i livelli. Verifica struttura e metadata iOS 0.1.0 build 2, distinzione simulator/iPhoneOS; APK arm64, AAB quattro ABI. Firma crittografica e installazione non verificate. [Evidenza riproducibile](evidence/2026-11-28-artifact-byte-verification.md). Assegnazione #51 7232645857; candidato e main invariati, nessun costo, nuova CI, pubblicazione o merge. #61 separata CI 45901387059 success; review assenti. Restano gate reali, fisici e RV-01, nessun nuovo difetto applicativo riprodotto.
+
+
+## 2026-11-28 — F13 firma APK v2, verifica crittografica mirata
+#52 eb5f8b1, CI 46090576320 success; #61 c1b88fc separata, CI 45901387059 success, nessuna review su entrambe. Riscaricato APK ARM64 15241157446, SHA-256 corrispondente. Firma RSA-2048 SHA-256 del signed data v2 e digest dei 25 chunk protetti verificati con cryptography, chiave pubblica coerente con certificato Android Debug; 3 mutazioni respinte (payload, central directory, firma). Non firma distribuzione né verifica completa apksigner, SDK non disponibile. [Evidenza](evidence/2026-11-28-apk-v2-signature.md). Main e candidato invariati; nessun costo, nuova CI o merge. Gate fisici, provider reali, verifica SDK e RV-01 aperti.
