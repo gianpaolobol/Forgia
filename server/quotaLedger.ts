@@ -12,6 +12,11 @@ function dayOf(time: number) {
   if (!Number.isSafeInteger(time) || time < 0 || time > 253402300799999) throw invalid();
   return new Date(time).toISOString().slice(0,10);
 }
+function validDay(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const ms = Date.parse(value);
+  return Number.isSafeInteger(ms) && ms >= 0 && ms <= 253402300799999 && dayOf(ms) === value;
+}
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalid();
   return value as Record<string, unknown>;
@@ -39,13 +44,13 @@ export function openQuotaLedger(path: string, clock: () => number = Date.now) {
   function tick() {
     const now = clock(), day = dayOf(now);
     const meta = q('SELECT last_ms FROM forgia_quota_meta_v1 WHERE singleton=1').get();
-    if (!meta || !Number.isSafeInteger(meta.last_ms) || now < Number(meta.last_ms)) throw invalid();
+    if (!meta || !Number.isSafeInteger(meta.last_ms) || Number(meta.last_ms)<0 || now < Number(meta.last_ms)) throw invalid();
     q('UPDATE forgia_quota_meta_v1 SET last_ms=? WHERE singleton=1').run(now);
     return {now,day};
   }
   function current(provider: CloudProvider, day: string) {
     const row = q('SELECT day,used,cooldown_until FROM forgia_quota_v1 WHERE provider=?').get(provider);
-    if (!row || typeof row.day !== 'string' || row.day > day || !Number.isSafeInteger(row.used) || Number(row.used)<0 || !Number.isSafeInteger(row.cooldown_until) || Number(row.cooldown_until)<0) throw invalid();
+    if (!row || !validDay(row.day) || row.day > day || !Number.isSafeInteger(row.used) || Number(row.used)<0 || !Number.isSafeInteger(row.cooldown_until) || Number(row.cooldown_until)<0) throw invalid();
     return {used:row.day===day?Number(row.used):0, cooldownUntil:Number(row.cooldown_until)};
   }
   function save(provider: CloudProvider, day: string, used: number, cooldownUntil: number) {
@@ -61,7 +66,7 @@ export function openQuotaLedger(path: string, clock: () => number = Date.now) {
         let counts: Record<string,unknown> = {}, sourceDay = day;
         if (snapshot !== null) {
           const raw = object(snapshot);
-          if (raw.version !== 1 || typeof raw.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw.day) || raw.day > day || !Number.isFinite(Date.parse(raw.day)) || new Date(raw.day).toISOString().slice(0,10)!==raw.day) throw invalid();
+          if (raw.version !== 1 || !validDay(raw.day) || raw.day > day) throw invalid();
           sourceDay = raw.day;
           counts = object(raw.counts);
           for (const [id,count] of Object.entries(counts)) {

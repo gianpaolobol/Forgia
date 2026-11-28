@@ -36,3 +36,5 @@ Segue la versione **1.1.0** (`LINEE_GUIDA.md`).
 - 2026-11-28 [Codex] DF1–DF7 eseguiti due volte, 7/7 su Node22 e SQLite reali; provider sintetici. Evidenza docs/evidence/2026-11-28-df-integrated.md. Node24/HTTP/CI/review ancora aperti.
 
 - 2026-11-28 [Codex] B1–B8 8/8 su SQLite reale e Node22: marker di cutover quota/cache impedisce downgrade/reinizializzazione dopo perdita isolata del DB. B9 HTTP predisposto, non eseguito.
+
+- 2026-11-28 [Codex] QI1–QI3 e Q1–Q7: 12/12 su Node22/SQLite; date quota corrotte e clock negativo respinti senza reset. Gate V1 invariati.
