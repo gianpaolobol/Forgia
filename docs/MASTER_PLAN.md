@@ -180,3 +180,7 @@ Direttiva titolare build finali 28/11: verificati i nove task attivi di sviluppo
 
 ## 2026-11-28 — F09 collaudo recupero persistente
 - Nuovo verticale test agente/control SQLite su due DB disco, HTTP sintetico, perdita risposta, riapertura, idempotenza, rotazione e revoche: 1/1 PASS ripetuto tre volte su Node22.16; evidenza [remote-persistent-recovery](evidence/2026-11-28-remote-persistent-recovery.md). Nessuna modifica applicativa o gate V1 chiuso. MP3–MP5/B9, Node24, provider reali e remoto fisico restano aperti; no CI/build/merge.
+
+
+## 2026-11-28 — [Codex] F03/F04/F05/F13, runner accettazione Ollama alternativo
+Candidato basato su 8433e7487cd98e1e6fef356be4263ce9da8f606a. Estensione del runner locale esistente: opt-in Ollama senza cloud, alias con tag, verifica listing/digest/dimensione e metadata show, stesso gateway/SQLite/pinning/recupero/revoca. Non si presume attestazione hardware da metadata; operatore deve disabilitare cloud nel runtime. LR1–LR6 6/6 pass su Linux Node 22.16, cinque fixture trasporto e una prova HTTP loopback reale con risposta sintetica; LA6–LA7 predisposti per Node24 e checkout completo, non eseguiti. Nessuna inferenza reale, nessuna chiave, modifica workflow, build, merge o review indipendente. [Evidenza](evidence/2026-11-28-ollama-acceptance.md). Restano aperti B9/MP3–MP5 HTTP, suite cumulativa, prova cloud gratuita, nodo fisico e RV-01; #61/#62 separati, main/backup immutati. Assegnazione #51 commento 7244168808.

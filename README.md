@@ -186,3 +186,13 @@ Il rapporto dei runner espone `dispatchMayHaveOccurred` (vero dal momento preced
 
 ### Recupero quota/cache dopo cutover (candidato)
 Dal primo avvio verificato del nuovo candidato con `FORGIA_SQLITE_CLOUD_STATE=1`, il file privato `sqlite-loopback/cloud-required` registra il cutover indipendentemente da `cloud.sqlite`. Conservare il marker insieme al DB e all'intera directory dati in backup offline coerenti. Se manca il DB o rimangono sidecar orfani, non rimuovere il marker e non usare INITIALIZE: arrestare tutti i processi, ripristinare una copia coerente e riconciliare le quote effettive del provider prima di riattivarlo. Il marker viene adottato anche da un DB preesistente valido al primo riavvio; non può rilevare la perdita del DB antecedente a tale adozione o la perdita contemporanea di tutte le evidenze. Nessuna garanzia di ripristino senza backup, né di ACL/durabilità Windows finché non collaudate.
+
+
+### Collaudo locale reale alternativo con Ollama (candidato)
+Su checkout pulito con Node 24, runtime Ollama già attivo su 127.0.0.1:11434, modello locale già installato con alias esatto e tag esplicito, e porta gateway 8787 libera. Prima dell'esecuzione l'operatore deve disabilitare le funzioni cloud **nel runtime Ollama**, ad esempio avviandolo con `OLLAMA_NO_CLOUD=1` e verificando la configurazione; seguire la [documentazione ufficiale](https://github.com/ollama/ollama/blob/main/docs/cloud.mdx). Non scaricare modelli, abilitare account o effettuare richieste esterne per questo test.
+
+```bash
+node scripts/local-acceptance.mjs --confirm-local-runtime --confirm-ollama-no-cloud --model qwen2.5:0.5b
+```
+
+L'alias è un esempio, non una raccomandazione di download. Il runner verifica `/api/tags` e `/api/show`, rifiuta alias non canonici e metadata remoti, poi usa il medesimo gateway protetto, SQLite, singolo catalogo sintetico, recupero e revoca del runner llama.cpp. La conferma operatore e i metadata non costituiscono un'attestazione indipendente dell'esecuzione locale. Nessuna inferenza reale è attestata da LR1–LR6; LA6–LA7 richiedono il checkout Node24 e simulano il trasporto Ollama, non il modello. L'invocazione precedente per llama.cpp resta valida.

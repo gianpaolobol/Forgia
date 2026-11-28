@@ -1,4 +1,4 @@
-// Opt-in acceptance against an operator-confirmed, already running llama.cpp.
+// Opt-in acceptance against an operator-confirmed, already running llama.cpp or Ollama.
 // Local by default. The separate cloud entrypoint requires explicit synthetic-data and quota consent.
 // Never start/download a model or touch an existing data directory.
 import assert from 'node:assert/strict';
@@ -10,12 +10,12 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
+import {parseLocalRuntime,probeLocalRuntime} from './local-runtime.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const name='Catalogo prova Forgia', item='Alba';
 export function parseArgs(args){
- if(args.length!==3||args[0]!=='--confirm-local-runtime'||args[1]!=='--model'||!/^[a-zA-Z0-9_.:-]{1,150}$/.test(args[2]))throw Error('explicit-local-runtime-and-alias-required');
- return args[2];
+ return parseLocalRuntime(args).model;
 }
 export function acceptsResult(job,model,provider='llamacpp'){
  const r=job?.result,s=r?.spec;
@@ -46,7 +46,7 @@ export function run(args){return runAcceptance(args,false);}
 export function runCloud(args){return runAcceptance(args,true);}
 async function runAcceptance(args,cloud){
  const checks={};
- let stage='preflight',dir,child,sha,model;
+ let stage='preflight',dir,child,sha,model,provider;
  const started=Date.now();
  const stop=async()=>{
   if(!child)return;
@@ -64,8 +64,9 @@ async function runAcceptance(args,cloud){
  };
  let pass=false,dispatchMayHaveOccurred=false,inferenceCheckpoint;
  try{
-  model=cloud?parseCloudArgs(args):parseArgs(args);
-  const provider=cloud?'openrouter':'llamacpp';
+  const runtime=cloud?undefined:parseLocalRuntime(args);
+  model=cloud?parseCloudArgs(args):runtime.model;
+  provider=cloud?'openrouter':runtime.provider;
   const apiKey=cloud?process.env.OPENROUTER_API_KEY:undefined;
   if(cloud&&(!apiKey?.trim()||/\s/.test(apiKey)))throw Error('private-server-key-required');
   const day=new Date().toISOString().slice(0,10);
@@ -75,11 +76,7 @@ async function runAcceptance(args,cloud){
   await freeGatewayPort();
   if(!cloud){
   stage='local-runtime';
-  const health=await fetch('http://127.0.0.1:8080/health',{signal:AbortSignal.timeout(5000),redirect:'error'});
-  assert.equal(health.status,200);await health.body?.cancel();
-  const models=await json('http://127.0.0.1:8080/v1/models');
-  assert.equal(models.status,200);
-  assert.ok(Array.isArray(models.data?.data)&&models.data.data.some(m=>m.id===model));
+  await probeLocalRuntime(runtime);
   checks.runtimeAliasAdvertised=true;
   }
   stage='isolated-migration';
@@ -87,7 +84,7 @@ async function runAcceptance(args,cloud){
   const session=randomUUID(),token=randomBytes(32).toString('hex');
   const env={};
   for(const key of ['PATH','SystemRoot','WINDIR','TEMP','TMP'])if(process.env[key])env[key]=process.env[key];
-  Object.assign(env,{FORGIA_DATA_DIR:dir,FORGIA_SQLITE_LOCAL:'1',...(!cloud?{LLAMACPP_MODEL:model}:{})});
+  Object.assign(env,{FORGIA_DATA_DIR:dir,FORGIA_SQLITE_LOCAL:'1',...(!cloud?{[provider==='local'?'OLLAMA_MODEL':'LLAMACPP_MODEL']:model}:{})});
   await writeFile(join(dir,'jobs.v1.json'),'[]',{mode:0o600});
   // Fresh synthetic fixture, never replace production quota. Reserve all but one daily slot.
   if(cloud)await writeFile(join(dir,'gateway.v1.json'),JSON.stringify({version:1,day,counts:{openrouter:19},cache:{},pilotCache:{}}),{mode:0o600});
@@ -126,8 +123,8 @@ async function runAcceptance(args,cloud){
    assert.ok(cap.data.providers.every(p=>!p.configured));
    checks.protectedExplicitCloud=true;
   }else{
-   assert.ok(cap.data.providers.some(p=>p.id==='llamacpp'&&p.model===model&&p.configured));
-   assert.ok(cap.data.providers.filter(p=>p.id!=='llamacpp').every(p=>!p.configured));
+   assert.ok(cap.data.providers.some(p=>p.id===provider&&p.model===model&&p.configured));
+   assert.ok(cap.data.providers.filter(p=>p.id!==provider).every(p=>!p.configured));
    checks.protectedLocalOnly=true;
   }
   stage='inference';
@@ -205,7 +202,7 @@ async function runAcceptance(args,cloud){
   try{await stop();if(dir)await rm(dir,{recursive:true,force:true});}
   catch{pass=false;stage='cleanup';}
  }
- return {pass,sha,model,node:process.versions.node,elapsedMs:Date.now()-started,scope:cloud?'operator-confirmed-openrouter-free-protected-sqlite':'operator-confirmed-loopback-llamacpp-protected-sqlite',dispatchMayHaveOccurred,reconciliationRequired:cloud&&dispatchMayHaveOccurred,checks,...(!pass?{failedStage:stage,...(stage==='inference'&&inferenceCheckpoint?{inferenceCheckpoint}:{})}:{})};
+ return {pass,sha,model,node:process.versions.node,elapsedMs:Date.now()-started,scope:cloud?'operator-confirmed-openrouter-free-protected-sqlite':provider==='local'?'operator-confirmed-loopback-ollama-no-cloud-protected-sqlite':'operator-confirmed-loopback-llamacpp-protected-sqlite',dispatchMayHaveOccurred,reconciliationRequired:cloud&&dispatchMayHaveOccurred,checks,...(!pass?{failedStage:stage,...(stage==='inference'&&inferenceCheckpoint?{inferenceCheckpoint}:{})}:{})};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
  const result=await run(process.argv.slice(2));

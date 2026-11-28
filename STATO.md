@@ -42,3 +42,5 @@ Segue la versione **1.1.0** (`LINEE_GUIDA.md`).
 - 2026-11-28 [Codex] MA1–MA4 + M1–M5b 10/10 Node22/SQLite: contratto unico registro–adapter, ID malformati respinti; nessuna CI nuova. Linee guida v1.2.0 preparate nel registro, non propagate su main; applicare subito direttiva titolare build finali.
 
 - 2026-11-28 [Codex] F09 recupero persistente agente/control: 1/1 PASS ripetuto 3 volte, Node22, 2 DB disco e HTTP sintetico. Gate fisici e provider aperti, nessuna CI.
+
+- 2026-11-28 [Codex] Runner reale alternativo Ollama: preflight LR1–LR6 6/6 Node22, trasporti sintetici incluso HTTP locale; LA6–LA7 predisposti, non eseguiti. Provider reale e gate V1 ancora aperti.
