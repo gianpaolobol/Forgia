@@ -1,4 +1,4 @@
-// Dedicated integration test: requires free loopback ports 8787 and 11434.
+// Dedicated integration test: requires free loopback ports 8787, 11434 and 8080.
 // No user data, model downloads, real provider calls, or inherited API keys.
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -16,15 +16,22 @@ const root=fileURLToPath(new URL('../',import.meta.url));
 const dir=await mkdtemp(join(tmpdir(),'forgia-http-'));
 const session='00000000-0000-0000-0000-000000000001';
 const spec={name:'Catalogo',idea:'Catalogo di prova',kind:'catalog',quiz:false,items:[{name:'A',category:'A',color:''}]};
-let calls=0,child,rateLimited=false,hold;
+let calls=0,child,rateLimited=false,hold,failAfterDispatch=false,alternateCalls=0;
 const fake=createServer(async(req,res)=>{
  for await(const _ of req) { /* consume synthetic request */ }
  calls++;
  const gate=hold;
  if(gate){gate.entered=true;await gate.released;if(res.destroyed)return;}
  if(rateLimited){res.writeHead(429,{'Retry-After':'120'});res.end();return;}
+ if(failAfterDispatch){res.writeHead(503);res.end();return;}
  res.setHeader('content-type','application/json');
  res.end(JSON.stringify({done:true,message:{content:JSON.stringify(spec)}}));
+});
+const alternate=createServer(async(req,res)=>{
+ for await(const _ of req) { /* consume synthetic request */ }
+ alternateCalls++;
+ res.setHeader('content-type','application/json');
+ res.end(JSON.stringify({choices:[{message:{content:JSON.stringify(spec)}}]}));
 });
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const env={PATH:process.env.PATH,SystemRoot:process.env.SystemRoot,FORGIA_DATA_DIR:dir,FORGIA_SQLITE_LOCAL:'1',OLLAMA_MODEL:'fixture-local'};
@@ -276,5 +283,36 @@ try{
  await delay(800);assert.equal(calls,beforeRecovery+2);
  console.log('MP4 PASS: process loss after dispatch, real lease expiry, persistent uncertain receipt and no replay.');
 
+ // MP5: two actual loopback adapter endpoints; a post-dispatch unknown
+ // outcome must not trigger a second inference. A real 429 is distinct.
+ await stop();
+ alternate.listen(8080,'127.0.0.1');await once(alternate,'listening');
+ const autoEnv={...cloudEnv,LLAMACPP_MODEL:'fixture-alt',OLLAMA_FIT:'{"catalog":10,"draft":10}',LLAMACPP_FIT:'{"catalog":1,"draft":1}'};
+ await start(autoEnv);
+ const autoPayload={...body,idea:'Catalogo MP5 esito ignoto',provider:'auto'};
+ const autoKey='project:pmpauto';
+ const beforeAuto=calls;
+ failAfterDispatch=true;
+ const auto=await postProtected(autoPayload,autoKey);assert.equal(auto.status,202);
+ const {id:autoId}=await auto.json();
+ await poll(()=>persisted(autoId)?.status==='uncertain');
+ assert.equal(persisted(autoId).result,null);
+ assert.equal(calls,beforeAuto+1);assert.equal(alternateCalls,0);
+ await inspectTerminal(autoId,autoKey,autoPayload);
+ await stop();await start(autoEnv);
+ await inspectTerminal(autoId,autoKey,autoPayload);
+ assert.equal(calls,beforeAuto+1);assert.equal(alternateCalls,0);
+ failAfterDispatch=false;rateLimited=true;
+ const refused=await postProtected({...autoPayload,idea:'Catalogo MP5 rifiuto esplicito'},'project:pmprefused');
+ assert.equal(refused.status,202);const {id:refusedId}=await refused.json();
+ const completed=await poll(async()=>{
+  const response=await authRequest('/jobs/'+refusedId,token);assert.equal(response.status,200);
+  const row=await response.json();return row.status==='done'||row.status==='failed'?row:null;
+ });
+ assert.equal(completed.status,'done');assert.deepEqual(completed.result.spec,spec);
+ assert.equal(completed.result.routing.provider,'llamacpp');
+ assert.equal(calls,beforeAuto+2);assert.equal(alternateCalls,1);
+ rateLimited=false;
+ console.log('MP5 PASS: no fallback after unknown dispatch; typed HTTP 429 permits alternate local inference.');
  console.log('D3/BSH11/A3/BSH12/UW4 PASS: HTTP, routing, Superhandy CLI, local adapter fixture, SQLite persistence, restart, legacy and authorization guards.');
-}finally{hold?.release();await stop();if(fake.listening){fake.closeAllConnections();await new Promise(r=>fake.close(r));}await rm(dir,{recursive:true,force:true});}
+}finally{hold?.release();await stop();if(fake.listening){fake.closeAllConnections();await new Promise(r=>fake.close(r));}if(alternate.listening){alternate.closeAllConnections();await new Promise(r=>alternate.close(r));}await rm(dir,{recursive:true,force:true});}

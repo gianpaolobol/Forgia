@@ -43,7 +43,7 @@ const durableAuth = sqliteLocal ? prepareDurableLocalAuth(sqliteDirectory,sqlite
 // Cloud providers remain disabled by default. State initialization alone never enables inference.
 const cloudState = sqliteCloudState ? prepareCloudState(sqliteDirectory,sqliteCloudInitialize,
   sqliteCloudInitialize ? await storage.getItem('gateway.v1') : null) : undefined;
-const gateway = createGateway(storage,{...cloudState,localCooldownLedger:localLedger});
+const gateway = createGateway(storage,{...cloudState,localCooldownLedger:localLedger,conservativeAuto:sqliteLocal});
 function configuredProvider(config: typeof configs[number]) {
  return createProvider({...config, fit: parseFit(config.fitRaw ?? process.env[config.prefix + '_FIT'])});
 }
