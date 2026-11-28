@@ -1,5 +1,9 @@
 # Forgia
 
+<!-- inizio-riquadro-linee-guida -->
+> **Linee guida v1.1.0** — Questo progetto segue le linee guida comuni dei progetti di Gian Paolo Franceschini: leggi prima [`LINEE_GUIDA.md`](LINEE_GUIDA.md), poi [`AGENTS.md`](AGENTS.md) e [`STATO.md`](STATO.md).
+<!-- fine-riquadro-linee-guida -->
+
 > **Copyright © 2026 Gian Paolo Franceschini — All rights reserved for original proprietary contributions.** See [LICENSE.md](LICENSE.md). Third-party licenses and GitHub's permitted platform uses remain applicable.
 
 Creatore di app di Gian Paolo Franceschini. Client Expo/React Native per iOS, Android e web; gateway di sviluppo Node separato. Nessun servizio a pagamento configurato.

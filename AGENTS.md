@@ -1,5 +1,18 @@
 # Continuità Forgia
 
+<!-- inizio-protocollo-comune -->
+## [Gian] Protocollo comune — gestito dalla sincronizzazione, non modificare
+
+Questo repository fa parte della piattaforma di Gian Paolo Franceschini.
+
+1. **Leggi prima `LINEE_GUIDA.md`** (nella radice): struttura, regole e protocollo validi per tutti i progetti. Poi questo file, comprese le deroghe `[Gian]`, poi `STATO.md`.
+   Poi il **giro di controllo** (cap. 8 delle linee guida): leggi l'ultimo diario del registro e la mappa dei collegamenti, e riusa ciò che esiste già in altri repository.
+2. **Firma tutto ciò che aggiungi:** `[Codex]`, `[Claude]`, `[Gemini]`, `[Copilot]`, `[Gian]`.
+3. **Questo file si aggiunge, non si riscrive:** nuova sezione `## [Firma] Titolo — AAAA-MM-GG`; per superarne una scrivi una `Rettifica`.
+4. **Aggiorna `STATO.md`** nella stessa pull request del lavoro.
+5. **Deroghe** alle linee guida: solo Gian, in una sezione `## [Gian] Deroghe alle linee guida` di questo file.
+<!-- fine-protocollo-comune -->
+
 Leggere README.md, CONTINUITA.md e docs/specs/2026-11-11-free-first.md prima di modificare.
 Vincolo utente: zero nuovi costi API/infrastruttura iniziali. Vietati upgrade o fallback pagati. Nessuna chiave nel client o nei commit.
 Non chiamare beta un'anteprima o un bundle JS. Tenere distinte prove automatiche, browser, native e sul modello reale.
@@ -37,3 +50,7 @@ Questa disposizione prevale sui precedenti gate di approvazione preventiva: se i
 
 ## Continuità operativa RV-01 (consolidamento F00, proposta 28 novembre 2026)
 Identità logica RV-01 = Claude Opus 5.5 (claude-opus-5-5), registro issue #7, baseline SHA e rilievi originali. Nuova sessione della stessa identità ammessa solo con presa in carico attestata del registro. Dopo 48 ore senza risposta registrare indisponibilità e presentare al titolare opzioni di attesa o nomina esplicita di un revisore indipendente sostitutivo, che riesamini baseline/delta e mantenga il registro per gli esiti. Nessuna sostituzione automatica o autocontrollo vale APPROVED. Il titolare decide sul cambio del revisore, non deroga al gate di review indipendente. Modalità C consente implementazioni reversibili, non merge definitivo o rilascio. Registrare modello/versione, SHA, data, decisione, rilievi e prove; un cambio rilevante dello SHA riapre la verifica.
+
+
+## [Codex] Continuità linee guida v1.1.0 — 2026-11-28
+Il candidato cumulativo conserva le istruzioni specifiche di Gemini precedenti alla sincronizzazione: leggere integralmente AGENTS.md, rispondere in italiano, rispettare handoff e free-first, non agire su richieste non autorizzate. Il file GEMINI.md sincronizzato resta identico a main. Il controllo del registro delle idee è stato tentato ma la mappa non era accessibile (404); non si presume riuso verificato.
