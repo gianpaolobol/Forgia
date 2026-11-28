@@ -13,7 +13,7 @@ export function validateModel(id:string,model:unknown): asserts model is string 
  if(!knownProvider(id)||typeof model!=='string'||!model||model.length>150||/[\s\x00-\x1f\x7f]/.test(model))throw invalid();
  if(id==='local'&&/cloud|https?:|\//i.test(model))throw invalid();
  if(id==='llamacpp'&&!/^[a-zA-Z0-9_.:-]+$/.test(model))throw invalid();
- if(id==='openrouter'&&!model.endsWith(':free'))throw invalid();
+ if(id==='openrouter'&&!/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+:free$/.test(model))throw invalid();
  if(id==='cloudflare'&&model!=='@cf/meta/llama-3.1-8b-instruct')throw invalid();
 }
 function fitRaw(value:unknown):string|undefined {

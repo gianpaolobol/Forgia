@@ -4,7 +4,7 @@ import {ProviderError, QuotaDeferral, retryDeadline} from './quotaDeferral.ts';
 export {ProviderError} from './quotaDeferral.ts';
 
 export interface Provider {fit?: ReturnType<typeof parseFit>;id:string;model:string;mode:'local'|'free'|'paid';eligible(signal?: AbortSignal):Promise<boolean>;complete(prompt:string,signal:AbortSignal):Promise<string>}
-import {localProvider, providerIds as registryProviderIds} from './modelRegistry.ts';
+import {localProvider, validateModel, providerIds as registryProviderIds} from './modelRegistry.ts';
 export {localProvider};
 export const providerIds: readonly string[] = registryProviderIds;
 interface Config {accountId?:string;fit?: ReturnType<typeof parseFit>;id:string;model:string;apiKey?:string;freePlanConfirmed?:boolean}
@@ -58,6 +58,8 @@ export function createProvider(config:Config,transport:Transport=fetch):Provider
  if(id==='openrouter'&&!model.endsWith(':free'))throw Error('OpenRouter: serve un modello esplicitamente :free.');
  if(id==='llamacpp'&&!/^[a-zA-Z0-9_.:-]+$/.test(model))throw Error('Alias llama.cpp non valido.');
  if(id==='cloudflare'&&(!config.freePlanConfirmed||!/^[0-9a-f]{32}$/i.test(config.accountId??'')||model!=='@cf/meta/llama-3.1-8b-instruct'))throw Error('Cloudflare richiede Workers Free confermato, Account ID e modello ammesso.');
+ // Legacy environment configuration must obey the same model policy as profiles.
+ validateModel(id,model);
  if(!localProvider(id)&&!apiKey)throw Error('Chiave server non configurata.');
  return {id,model,fit:config.fit,mode:localProvider(id)?'local':'free',async eligible(signal = AbortSignal.timeout(15000)){
   if(id==='openrouter'){

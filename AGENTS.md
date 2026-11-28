@@ -54,3 +54,7 @@ Identità logica RV-01 = Claude Opus 5.5 (claude-opus-5-5), registro issue #7, b
 
 ## [Codex] Continuità linee guida v1.1.0 — 2026-11-28
 Il candidato cumulativo conserva le istruzioni specifiche di Gemini precedenti alla sincronizzazione: leggere integralmente AGENTS.md, rispondere in italiano, rispettare handoff e free-first, non agire su richieste non autorizzate. Il file GEMINI.md sincronizzato resta identico a main. Il controllo del registro delle idee è stato tentato ma la mappa non era accessibile (404); non si presume riuso verificato.
+
+
+## [Codex] Direttiva del titolare — 2026-11-28, build finali
+Applicare la direttiva esplicita del titolare anche prima della sincronizzazione delle linee guida canoniche v1.2.0 (registro, branch docs/build-finali-protocollo-20261128). Completare macroblocchi, test locali gratuiti, regressioni, sicurezza, revisione incrociata e correzioni prima del freeze SHA/lockfile/backup/evidenze. Verificare quota effettiva e autorizzazioni; una sola build finale per piattaforma/candidato, riusare artefatti identici, evitare CI/build/deploy duplicati. Le eccezioni native richiedono blocco concreto senza alternativa locale, motivazione e quota gratuita verificata. Non aprire/aggiornare PR con workflow native-test automatico prima della qualifica; checkpoint su branch isolati. Non cambiare la copia sincronizzata LINEE_GUIDA.md né avviare sincronizzazione a pagamento. Collaudo fisico, firma e store gate restano obbligatori; nessun costo o pubblicazione non autorizzata.

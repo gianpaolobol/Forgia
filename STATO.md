@@ -14,7 +14,7 @@ non pubblicata
 ## Prossimi passi
 1. Eseguire npm ci, check e test completi su Node 24; ripetere DF1–DF7 (già 7/7 su Node22) e collaudare MP3–MP5 e B9 HTTP sul candidato cumulativo.
 2. Collaudare provider AI locale e cloud gratuito, recupero, controllo remoto e installazioni fisiche.
-3. Chiudere RV-01 (Issue #7) e verificare CI del nuovo candidato prima di ogni merge.
+3. Chiudere RV-01 (Issue #7), congelare SHA/lockfile/backup/evidenze, verificare quota e autorizzazione, quindi una sola CI/build finale per piattaforma e candidato prima di ogni merge; riutilizzare gli artefatti.
 4. Notification Hub #61 separato: consegna reale opt-in e integrazione solo dopo review e CI.
 
 ## Blocchi
@@ -38,3 +38,5 @@ Segue la versione **1.1.0** (`LINEE_GUIDA.md`).
 - 2026-11-28 [Codex] B1–B8 8/8 su SQLite reale e Node22: marker di cutover quota/cache impedisce downgrade/reinizializzazione dopo perdita isolata del DB. B9 HTTP predisposto, non eseguito.
 
 - 2026-11-28 [Codex] QI1–QI3 e Q1–Q7: 12/12 su Node22/SQLite; date quota corrotte e clock negativo respinti senza reset. Gate V1 invariati.
+
+- 2026-11-28 [Codex] MA1–MA4 + M1–M5b 10/10 Node22/SQLite: contratto unico registro–adapter, ID malformati respinti; nessuna CI nuova. Linee guida v1.2.0 preparate nel registro, non propagate su main; applicare subito direttiva titolare build finali.

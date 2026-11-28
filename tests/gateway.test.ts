@@ -23,7 +23,7 @@ test('OpenRouter rifiuta prezzi sconosciuti o non zero e modelli senza :free',as
   await assert.rejects(async()=>{const p=adapters.createProvider({id:'openrouter',model,apiKey:'test-only'},f);await p.eligible();});assert.equal(completionCalls,0);
  }
 });
-test('prezzi vuoti e spazi non sono una prova di gratuità',async()=>{assert.equal(typeof adapters.createProvider,'function');for(const price of ['', '   ']){const p=adapters.createProvider({id:'openrouter',model:'model:free',apiKey:'test-only'},async()=>new Response(JSON.stringify({data:[{id:'model:free',pricing:{prompt:price,completion:price}}]})));await assert.rejects(p.eligible(),/gratuit/i);}});
+test('prezzi vuoti e spazi non sono una prova di gratuità',async()=>{assert.equal(typeof adapters.createProvider,'function');for(const price of ['', '   ']){const p=adapters.createProvider({id:'openrouter',model:'example/model:free',apiKey:'test-only'},async()=>new Response(JSON.stringify({data:[{id:'example/model:free',pricing:{prompt:price,completion:price}}]})));await assert.rejects(p.eligible(),/gratuit/i);}});
 test('adapter Groq invia il protocollo previsto e interpreta il risultato',async()=>{
  assert.equal(typeof adapters.createProvider,'function');let seen=false;
  const f=async(url:string,init:RequestInit)=>{assert.equal(url,'https://api.groq.com/openai/v1/chat/completions');const body=JSON.parse(init.body as string);assert.equal(body.model,'example-free-model');assert.equal(body.messages[0].role,'system');seen=true;return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify(sample)}}]}));};
