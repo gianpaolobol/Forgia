@@ -135,3 +135,6 @@ SHA completi di base/head al momento della lettura. Righe storiche: relazione pe
 | 12 | Checklist F01, quarantena invariata; test attivazione non autorizzato |
 | 13 | Comando suite documentato; fixture storiche e hash da rendere riproducibili |
 Nessun rilievo formalmente chiuso dall'autore. Richiesta RV-01 sullo SHA di questo piano e sul candidato applicativo esatto. Interrompere modifiche solo dopo V1.0 effettivamente validata, non dopo questo checkpoint.
+
+## Addendum evidenze F05 — 28/11/2026
+[MP1/MP2](evidence/2026-11-28-sqlite-multiprocess.md): Linux Node22, otto processi OS per gara, tre ripetizioni a cap 5 e tre a cap 20, claim unico e contatori durevoli; tre uscite senza cleanup con recovery pre/post marker. 4/4 test pass. R01/R10 restano P: prove dirette dei ledger, non atomicità claim/quota/auth, non gateway integrato; Node24 Linux/Windows, clock reale e RV-01 aperti. Candidato #52 invariato, delta test isolato.
