@@ -24,7 +24,7 @@ function fixture(t:TestContext){
  const data=new Map<string,string>();
  const store={async getItem(k:string){return data.get(k)??null;},async setItem(k:string,v:string){data.set(k,v);}};
  const gateway=createGateway(store,{quotaLedger,cloudCache,localCooldownLedger:ledger,conservativeAuto:true});
- return {ledger,quotaLedger,cloudCache,gateway};
+ return {ledger,quotaLedger,cloudCache,gateway,data};
 }
 function locals(first:()=>Promise<Response>,calls:string[]){
  const a=createProvider({id:'local',model:'fixture-local',fit:{catalog:10,draft:10}},async()=>{calls.push('local');return first();});
@@ -67,4 +67,42 @@ test('DF4 valid grant and fence preserve authorized fallback and result',async t
  const outcome=await runOneDurableJob(ledger,{worker:'w',authorize:async()=>{checks++;return true;},run:(input,s,signal,guard)=>gateway.planAuto(input.idea,providers,false,context,0,s,signal,guard)});
  assert.equal(outcome,'done');assert.deepEqual(calls,['local','llamacpp']);assert.ok(checks>=4);
  assert.equal(JSON.parse(ledger.read(id,session)!.result!).routing.provider,'llamacpp');
+});
+
+test('DF5 revoke on successful local response: retain count, never cache or publish payload',async t=>{
+ const {ledger,gateway,data}=fixture(t),raw=payload('local'),id=ledger.enqueue(session,'df5',raw);
+ let valid=true,calls=0;
+ const provider:Provider={id:'local',mode:'local',model:'fixture-local',async eligible(){return true;},async complete(){calls++;valid=false;return JSON.stringify(spec);}};
+ const outcome=await runOneDurableJob(ledger,{worker:'w',authorize:async()=>valid,run:(input,s,signal,guard)=>gateway.plan(input.idea,provider,false,s,signal,guard)});
+ assert.equal(outcome,'uncertain');assert.equal(calls,1);assert.equal(ledger.read(id,session)?.result,null);
+ const state=JSON.parse(data.get('gateway.v1')!);
+ assert.equal(state.counts.local,1);assert.deepEqual(state.pilotCache,{});assert.deepEqual(state.cache,{});
+ assert.equal(ledger.enqueue(session,'df5',raw),id);assert.equal(ledger.claim('next',Date.now()+180000,30000),null);
+});
+test('DF6 revoke on successful cloud response: no persisted cache, no refund or replay',async t=>{
+ const {ledger,gateway,quotaLedger,cloudCache}=fixture(t),model='fixture/model:free',grant='a'.repeat(64),scope=session+':'+grant;
+ const raw=payload('openrouter',{consent:true,expectedModel:model,authorizationGrant:grant}),id=ledger.enqueue(session,'df6',raw);
+ let valid=true,calls=0;
+ const provider:Provider={id:'openrouter',mode:'free',model,async eligible(){return true;},async complete(){calls++;valid=false;return JSON.stringify(spec);}};
+ const outcome=await runOneDurableJob(ledger,{worker:'w',authorize:async()=>valid,run:(input,_s,signal,guard)=>gateway.plan(input.idea,provider,true,scope,signal,guard)});
+ assert.equal(outcome,'uncertain');assert.equal(calls,1);assert.equal(quotaLedger.read('openrouter').used,1);
+ assert.equal(cloudCache.read(cloudCacheKey('openrouter',model,idea,scope)),undefined);
+ assert.equal(ledger.read(id,session)?.result,null);assert.equal(ledger.enqueue(session,'df6',raw),id);
+ assert.equal(ledger.claim('next',Date.now()+180000,30000),null);
+});
+test('DF7 authorized responses preserve local and SQLite cloud cache and quota semantics',async t=>{
+ const {gateway,quotaLedger,cloudCache,data}=fixture(t),scope=session+':'+('a'.repeat(64));
+ const signal=new AbortController().signal;
+ for(const id of ['local','openrouter'] as const){
+  let calls=0,checks=0;
+  const model=id==='local'?'fixture-local':'fixture/model:free';
+  const provider:Provider={id,mode:id==='local'?'local':'free',model,async eligible(){return true;},async complete(){calls++;return JSON.stringify(spec);}};
+  const guard=async()=>{checks++;};
+  assert.equal((await gateway.plan(idea,provider,true,scope,signal,guard)).cached,false);
+  assert.equal((await gateway.plan(idea,provider,true,scope,signal,guard)).cached,true);
+  assert.equal(calls,1);assert.equal(checks,2);
+ }
+ assert.equal(quotaLedger.read('openrouter').used,1);
+ assert.deepEqual(cloudCache.read(cloudCacheKey('openrouter','fixture/model:free',idea,scope)),spec);
+ const state=JSON.parse(data.get('gateway.v1')!);assert.equal(state.counts.local,1);assert.equal(Object.keys(state.pilotCache).length,1);
 });

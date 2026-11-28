@@ -87,7 +87,12 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache,l
   let spec:AppSpec;
   try { spec=validateSpec(JSON.parse(output)); }
   catch { throw new ProviderError('Il modello ha restituito una specifica non valida.',502); }
-  if (key) cloudCache!.write(key,spec);
+  // A response may arrive before the periodic revocation poll. Do not persist
+  // its payload until the worker has freshly checked the grant and fence.
+  if (key) {
+   if (beforeDispatch) await guardDispatch(signal,beforeDispatch);
+   cloudCache!.write(key,spec);
+  }
   return {spec,cached:false,requestsUsed:grant.used};
  }
  async function attempt(prompt: string, provider: Provider, consent: boolean, state: State, signal: AbortSignal, scope?: string, reserve = 0, onDispatch?:()=>void,beforeDispatch?:()=>Promise<void>) {
@@ -125,6 +130,8 @@ export function createGateway(store:Storage,{dailyLimit,quotaLedger,cloudCache,l
   } catch {
    throw new ProviderError('Il modello ha restituito una specifica non valida.', 502);
   }
+  // Keep the committed request count, but do not cache an unauthorized result.
+  if (beforeDispatch) await guardDispatch(signal,beforeDispatch);
   cache[key] = spec;
   const keys = Object.keys(cache);
   if (keys.length > 100) delete cache[keys[0]];

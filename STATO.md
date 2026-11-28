@@ -12,7 +12,7 @@ in sviluppo
 non pubblicata
 
 ## Prossimi passi
-1. Eseguire npm ci, check e test completi su Node 24; scenari DF1–DF4 e MP3–MP5 sul candidato cumulativo.
+1. Eseguire npm ci, check e test completi su Node 24; scenari DF1–DF7 e MP3–MP5 sul candidato cumulativo.
 2. Collaudare provider AI locale e cloud gratuito, recupero, controllo remoto e installazioni fisiche.
 3. Chiudere RV-01 (Issue #7) e verificare CI del nuovo candidato prima di ogni merge.
 4. Notification Hub #61 separato: consegna reale opt-in e integrazione solo dopo review e CI.
@@ -30,3 +30,5 @@ Segue la versione **1.1.0** (`LINEE_GUIDA.md`).
 ## Registro aggiornamenti
 - 2026-11-26 [Claude] Prima compilazione dai contenuti del repository; le voci "da confermare" vanno verificate.
 - 2026-11-28 [Codex] Riconciliazione isolata di #44 con checkpoint cumulativo F05; #52 congelata con CI storica verde, nessun rilascio.
+
+- 2026-11-28 [Codex] Delta F05/R03: guard cache post-risposta, caratterizzazione V8 4/4 con dipendenze sintetiche; suite integrata ancora aperta.
