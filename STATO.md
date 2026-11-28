@@ -40,3 +40,5 @@ Segue la versione **1.1.0** (`LINEE_GUIDA.md`).
 - 2026-11-28 [Codex] QI1–QI3 e Q1–Q7: 12/12 su Node22/SQLite; date quota corrotte e clock negativo respinti senza reset. Gate V1 invariati.
 
 - 2026-11-28 [Codex] MA1–MA4 + M1–M5b 10/10 Node22/SQLite: contratto unico registro–adapter, ID malformati respinti; nessuna CI nuova. Linee guida v1.2.0 preparate nel registro, non propagate su main; applicare subito direttiva titolare build finali.
+
+- 2026-11-28 [Codex] F09 recupero persistente agente/control: 1/1 PASS ripetuto 3 volte, Node22, 2 DB disco e HTTP sintetico. Gate fisici e provider aperti, nessuna CI.
