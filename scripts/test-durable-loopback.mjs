@@ -9,15 +9,19 @@ import {once} from 'node:events';
 import {mkdtemp,mkdir,rm,writeFile,readFile,readdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {DatabaseSync} from 'node:sqlite';
+import {rename} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const dir=await mkdtemp(join(tmpdir(),'forgia-http-'));
 const session='00000000-0000-0000-0000-000000000001';
 const spec={name:'Catalogo',idea:'Catalogo di prova',kind:'catalog',quiz:false,items:[{name:'A',category:'A',color:''}]};
-let calls=0,child,rateLimited=false;
+let calls=0,child,rateLimited=false,hold;
 const fake=createServer(async(req,res)=>{
  for await(const _ of req) { /* consume synthetic request */ }
  calls++;
+ const gate=hold;
+ if(gate){gate.entered=true;await gate.released;if(res.destroyed)return;}
  if(rateLimited){res.writeHead(429,{'Retry-After':'120'});res.end();return;}
  res.setHeader('content-type','application/json');
  res.end(JSON.stringify({done:true,message:{content:JSON.stringify(spec)}}));
@@ -208,5 +212,69 @@ try{
  assert.equal((await (await authRequest('/providers',token)).json()).durableCloudExplicit,undefined);
  assert.equal(calls,beforeAuth+2);
  console.log('EC3 PASS: protected HTTP cloud capability scoped to explicit session; no cloud request.');
+
+ // MP3/MP4: protected HTTP, worker, SQLite and synthetic local adapter.
+ // Restore the exact fixture snapshot only to inspect the terminal receipt.
+ const exactAccounts=await readFile(accountPath);
+ const openGate=()=>{
+  let release;const released=new Promise(r=>{release=r;});
+  hold={entered:false,released,release};return hold;
+ };
+ const poll=async(fn,ms=8000)=>{
+  const deadline=Date.now()+ms;
+  do{const value=await fn();if(value)return value;await delay(50);}while(Date.now()<deadline);
+  throw Error('Timeout verifica HTTP protetta');
+ };
+ const persisted=(id)=>{
+  const db=new DatabaseSync(join(authDir,'sqlite-loopback','jobs.sqlite'),{readOnly:true});
+  try{return db.prepare('SELECT status, result FROM forgia_jobs_v1 WHERE id=?').get(id);}
+  finally{db.close();}
+ };
+ const postProtected=(payload,key)=>authRequest('/jobs',token,{method:'POST',headers:{'content-type':'application/json','idempotency-key':key},body:JSON.stringify(payload)});
+ const receiptProtected=(key)=>authRequest('/jobs/receipt',token,{headers:{'X-Forgia-Session':session,'Idempotency-Key':key}});
+ const inspectTerminal=async(id,key,payload)=>{
+  const response=await authRequest('/jobs/'+id,token);assert.equal(response.status,200);
+  const result=await response.json();assert.equal(result.status,'failed');assert.equal(result.statusCode,409);assert.equal(Object.hasOwn(result,'result'),false);
+  const receipt=await receiptProtected(key);assert.equal(receipt.status,200);assert.deepEqual(await receipt.json(),{id});
+  const duplicate=await postProtected(payload,key);assert.equal(duplicate.status,202);assert.deepEqual(await duplicate.json(),{id});
+ };
+ const revocationPayload={...body,idea:'Catalogo MP3 revoca durante invio',provider:'local',expectedModel:'fixture-local'};
+ const revocationKey='project:pmprevocation';
+ const beforeRecovery=calls;
+ const revokeGate=openGate();
+ const revocation=await postProtected(revocationPayload,revocationKey);
+ assert.equal(revocation.status,202);const {id:revocationId}=await revocation.json();
+ await poll(()=>revokeGate.entered);
+ assert.equal(persisted(revocationId).status,'dispatched');assert.equal(calls,beforeRecovery+1);
+ await writeFile(accountPath+'.next',JSON.stringify([account(session,foreign)]),{mode:0o600});
+ await rename(accountPath+'.next',accountPath);
+ assert.equal((await authRequest('/jobs/'+revocationId,token)).status,401);
+ assert.equal((await authRequest('/jobs/'+revocationId,foreign)).status,404);
+ await poll(()=>persisted(revocationId)?.status==='uncertain');
+ assert.equal(persisted(revocationId).result,null);
+ revokeGate.release();hold=undefined;
+ // Exact snapshot restores the original synthetic grant; a new expiry would not.
+ await writeFile(accountPath+'.next',exactAccounts,{mode:0o600});await rename(accountPath+'.next',accountPath);
+ await inspectTerminal(revocationId,revocationKey,revocationPayload);
+ await stop();await start(cloudEnv);
+ await inspectTerminal(revocationId,revocationKey,revocationPayload);
+ assert.equal(calls,beforeRecovery+1);
+ console.log('MP3 PASS: live revocation after dispatch, uncertain receipt and no replay after restart.');
+ const crashPayload={...body,idea:'Catalogo MP4 interruzione dopo invio',provider:'local',expectedModel:'fixture-local'};
+ const crashKey='project:pmpcrash';
+ const crashGate=openGate();
+ const crash=await postProtected(crashPayload,crashKey);assert.equal(crash.status,202);
+ const {id:crashId}=await crash.json();
+ await poll(()=>crashGate.entered);assert.equal(persisted(crashId).status,'dispatched');
+ assert.equal(calls,beforeRecovery+2);
+ // Terminate the actual gateway before the synthetic adapter returns a result.
+ await stop();crashGate.release();hold=undefined;await start(cloudEnv);
+ // Wait for actual 30s lease expiry; do not modify database or clock.
+ await poll(()=>persisted(crashId)?.status==='uncertain',45000);
+ assert.equal(persisted(crashId).result,null);
+ await inspectTerminal(crashId,crashKey,crashPayload);
+ await delay(800);assert.equal(calls,beforeRecovery+2);
+ console.log('MP4 PASS: process loss after dispatch, real lease expiry, persistent uncertain receipt and no replay.');
+
  console.log('D3/BSH11/A3/BSH12/UW4 PASS: HTTP, routing, Superhandy CLI, local adapter fixture, SQLite persistence, restart, legacy and authorization guards.');
-}finally{await stop();if(fake.listening){fake.closeAllConnections();await new Promise(r=>fake.close(r));}await rm(dir,{recursive:true,force:true});}
+}finally{hold?.release();await stop();if(fake.listening){fake.closeAllConnections();await new Promise(r=>fake.close(r));}await rm(dir,{recursive:true,force:true});}
